@@ -1,3 +1,3 @@
 ﻿namespace Application;
 
-public readonly record struct MailboxMap(Guid Mailbox, DateTime ExpiresAt);
+public readonly record struct MailboxMap(Guid Mailbox, DateOnly ExpiresDay);

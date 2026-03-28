@@ -1,3 +1,3 @@
 ﻿namespace Application;
 
-public readonly record struct MailboxOwner(string User, DateTime ExpiresAt);
+public readonly record struct MailboxOwner(string User, DateOnly ExpiresDay);

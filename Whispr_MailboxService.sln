@@ -4,7 +4,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Services", "Services\Servic
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Model", "Model\Model.csproj", "{4CAD66A9-FDCE-428A-AFED-53D2ED5D2FB1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Infrastructure.EF", "Infrastructure.EF\Infrastructure.EF.csproj", "{7F2DF134-60A9-4FE9-A92C-90B69075E093}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Infrastructure.Storage", "Infrastructure.Storage\Infrastructure.Storage.csproj", "{7F2DF134-60A9-4FE9-A92C-90B69075E093}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Application", "Application\Application.csproj", "{40555B93-BAD6-4794-BEA8-AD179ABAAB10}"
 EndProject

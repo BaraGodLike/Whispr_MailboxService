@@ -11,7 +11,7 @@ public class MailboxController(IMailboxRepository repository) : ControllerBase
     [HttpPost("mb")]
     public async Task<ActionResult> GetMailboxAsync([FromBody] string user, CancellationToken ctn)
     {
-        return Ok((await repository.GetLastMailboxForUserAsync(user, ctn)).Mailbox);
+        return Ok((await repository.GetCurrentMailboxForUserAsync(user, ctn)).Mailbox);
     }
     
     [HttpPost("user")]
@@ -23,11 +23,12 @@ public class MailboxController(IMailboxRepository repository) : ControllerBase
     [HttpPost("new")]
     public async Task<ActionResult> CreateNewMailboxAsync([FromBody] string user, CancellationToken ctn)
     {
-        await repository.CreateMailboxAsync(new UserMailbox(
-            user,
-            Guid.NewGuid(),
-            DateTime.Today + TimeSpan.FromDays(6),
-            true), ctn);
+        await repository.CreateMailboxAsync(
+            new UserMailbox(
+                user,
+                MailboxAddress: Guid.NewGuid(),
+                ExpiresDay: DateOnly.FromDateTime(DateTime.Today + TimeSpan.FromDays(7))),
+            ctn);
         return Created();
     }
 }
