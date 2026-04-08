@@ -11,13 +11,19 @@ public class MailboxController(IMailboxRepository repository) : ControllerBase
     [HttpPost("mb")]
     public async Task<ActionResult> GetMailboxAsync([FromBody] string user, CancellationToken ctn)
     {
-        return Ok((await repository.GetCurrentMailboxForUserAsync(user, ctn)).Mailbox);
+        var mailboxMap = await repository.GetCurrentMailboxForUserAsync(user, ctn);
+        return mailboxMap == default
+            ? NotFound(new {Error = "User not found."})
+            : Ok(CreateMailboxDto(mailboxMap));
     }
     
     [HttpPost("user")]
-    public async Task<ActionResult> GetMailbox(Guid mailbox, CancellationToken ctn)
+    public async Task<ActionResult> GetUserAsync([FromBody] Guid mailbox, CancellationToken ctn)
     {
-        return Ok((await repository.GetUserByMailboxAsync(mailbox, ctn)).User);
+        var mailboxOwner = await repository.GetUserByMailboxAsync(mailbox, ctn);
+        return mailboxOwner == default
+            ? NotFound(new {Error = "User with this mailbox not found."})
+            : Ok(new {User = mailboxOwner.User});
     }
 
     [HttpPost("new")]
@@ -30,5 +36,12 @@ public class MailboxController(IMailboxRepository repository) : ControllerBase
                 ExpiresDay: DateOnly.FromDateTime(DateTime.Today + TimeSpan.FromDays(7))),
             ctn);
         return Created();
+    }
+
+    private static MailboxDto CreateMailboxDto(MailboxMap map)
+    {
+        return new MailboxDto(
+            MailboxAddress: map.Mailbox,
+            ExpiresAt: map.ExpiresDay.AddDays(-6).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
     }
 }

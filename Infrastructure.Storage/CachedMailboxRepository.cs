@@ -13,13 +13,14 @@ public sealed class CachedMailboxRepository(IMailboxRepository sqlRepository, ID
         if (cached.HasValue) return cached.Value;
 
         var owner = await sqlRepository.GetUserByMailboxAsync(mailboxAddress, ctn);
-
-        await MailboxRedis.SetMailboxAsync(
-            cache,
-            mailboxAddress,
-            owner.User,
-            owner.ExpiresDay,
-            ctn);
+        
+        if (owner != default)
+            await MailboxRedis.SetMailboxAsync(
+                cache,
+                mailboxAddress,
+                owner.User,
+                owner.ExpiresDay,
+                ctn);
         return owner;
     }
 
@@ -29,8 +30,9 @@ public sealed class CachedMailboxRepository(IMailboxRepository sqlRepository, ID
         if (cached.HasValue) return cached.Value;
 
         var mailbox = await sqlRepository.GetCurrentMailboxForUserAsync(user, ctn);
-
-        await MailboxRedis.SetUserAsync(cache, mailbox.Mailbox, user, mailbox.ExpiresDay, ctn);
+        
+        if (mailbox != default)
+            await MailboxRedis.SetUserAsync(cache, mailbox.Mailbox, user, mailbox.ExpiresDay, ctn);
         return mailbox;
     }
 

@@ -8,6 +8,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Infrastructure.Storage", "I
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Application", "Application\Application.csproj", "{40555B93-BAD6-4794-BEA8-AD179ABAAB10}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Migrator", "Migrator\Migrator.csproj", "{5950B5F8-0D76-4AEC-8AE9-CE15DF112ABF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -30,5 +32,9 @@ Global
 		{40555B93-BAD6-4794-BEA8-AD179ABAAB10}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{40555B93-BAD6-4794-BEA8-AD179ABAAB10}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{40555B93-BAD6-4794-BEA8-AD179ABAAB10}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5950B5F8-0D76-4AEC-8AE9-CE15DF112ABF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5950B5F8-0D76-4AEC-8AE9-CE15DF112ABF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5950B5F8-0D76-4AEC-8AE9-CE15DF112ABF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5950B5F8-0D76-4AEC-8AE9-CE15DF112ABF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

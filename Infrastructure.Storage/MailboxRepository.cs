@@ -9,6 +9,7 @@ public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRep
 {
     private const string HistoryTable = @"""UserMailboxes""";
     private const string CurrentTable = @"""UserCurrentMailboxes""";
+    private static DateTime ToDbDate(DateOnly date) => date.ToDateTime(TimeOnly.MinValue);
 
     public async Task<MailboxOwner> GetUserByMailboxAsync(Guid mailboxAddress, CancellationToken ctn)
     {
@@ -28,15 +29,14 @@ public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRep
             new { MailboxAddress = mailboxAddress },
             cancellationToken: ctn);
 
-        var owner = await conn.QuerySingleOrDefaultAsync<MailboxOwner?>(cmd);
-        return owner ?? throw new InvalidOperationException($"Mailbox {mailboxAddress} not found.");
+        return await conn.QuerySingleOrDefaultAsync<MailboxOwner>(cmd);
     }
 
     public async Task<MailboxMap> GetCurrentMailboxForUserAsync(string user, CancellationToken ctn)
     {
         const string sql = $"""
             SELECT
-                "MailboxAddress" AS "MailboxAddress",
+                "MailboxAddress" AS "Mailbox",
                 "ExpiresDay"     AS "ExpiresDay"
             FROM {CurrentTable}
             WHERE "User" = @User
@@ -50,8 +50,7 @@ public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRep
             new { User = user },
             cancellationToken: ctn);
 
-        var map = await conn.QuerySingleOrDefaultAsync<MailboxMap?>(cmd);
-        return map ?? throw new InvalidOperationException("Current mailbox for user not found.");
+        return await conn.QuerySingleOrDefaultAsync<MailboxMap>(cmd);
     }
 
     public async Task CreateMailboxAsync(UserMailbox userMailbox, CancellationToken ctn)
@@ -80,9 +79,9 @@ public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRep
         {
             var p = new
             {
-                userMailbox.ExpiresDay,
-                userMailbox.MailboxAddress,
-                userMailbox.User
+                ExpiresDay = ToDbDate(userMailbox.ExpiresDay),
+                MailboxAddress = userMailbox.MailboxAddress,
+                User = userMailbox.User
             };
 
             await conn.ExecuteAsync(new CommandDefinition(
@@ -117,7 +116,7 @@ public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRep
 
         await conn.ExecuteAsync(new CommandDefinition(
             sql,
-            new { From = from, DaysAhead = daysAhead },
+            new { From = ToDbDate(from), DaysAhead = daysAhead },
             cancellationToken: ctn));
     }
 
@@ -131,7 +130,7 @@ public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRep
 
         await conn.ExecuteAsync(new CommandDefinition(
             sql,
-            new { Day = day },
+            new { Day = ToDbDate(day) },
             cancellationToken: ctn));
     }
 }
