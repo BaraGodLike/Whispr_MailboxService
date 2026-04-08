@@ -1,6 +1,6 @@
 using FluentMigrator;
 
-namespace Migrator.Migrations;
+namespace Migrator;
 
 [Migration(2)]
 public sealed class CreateUserMailboxesPartitionedHistory : Migration

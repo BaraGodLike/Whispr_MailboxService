@@ -1,11 +1,20 @@
 using FluentMigrator;
 
-namespace Migrator.Migrations;
+namespace Migrator;
 
-[Migration(1)]
-public sealed class CreateUserCurrentMailboxes : Migration
+[Migration(4)]
+public sealed class DropUserCurrentMailboxes : Migration
 {
     public override void Up()
+    {
+        if (Schema.Table("UserCurrentMailboxes").Index("IX_UserCurrentMailboxes_MailboxAddress").Exists())
+            Delete.Index("IX_UserCurrentMailboxes_MailboxAddress").OnTable("UserCurrentMailboxes");
+
+        if (Schema.Table("UserCurrentMailboxes").Exists())
+            Delete.Table("UserCurrentMailboxes");
+    }
+
+    public override void Down()
     {
         if (!Schema.Table("UserCurrentMailboxes").Exists())
         {
@@ -22,14 +31,5 @@ public sealed class CreateUserCurrentMailboxes : Migration
                 .OnColumn("MailboxAddress").Ascending()
                 .WithOptions().Unique();
         }
-    }
-
-    public override void Down()
-    {
-        if (Schema.Table("UserCurrentMailboxes").Index("IX_UserCurrentMailboxes_MailboxAddress").Exists())
-            Delete.Index("IX_UserCurrentMailboxes_MailboxAddress").OnTable("UserCurrentMailboxes");
-
-        if (Schema.Table("UserCurrentMailboxes").Exists())
-            Delete.Table("UserCurrentMailboxes");
     }
 }

@@ -11,6 +11,7 @@ public static class MailboxRedis
     private static readonly RedisValue FieldUser = "u";
     private static readonly RedisValue FieldExpDay = "expd"; // int yyyymmdd
     private static readonly RedisValue FieldMailbox = "mb";
+    private static DateOnly CurrentMailboxExpiresDay() => DateOnly.FromDateTime(DateTime.UtcNow).AddDays(6);
 
     public static async Task SetMailboxAsync(
         IDatabase db,
@@ -21,7 +22,7 @@ public static class MailboxRedis
     {
         var key = MbKey(mailbox);
         var expd = ToYyyyMmDd(expiresDay);
-        var ttl = TtlToRotationUtc(expiresDay);
+        var ttl = TtlToRotationUtc(expiresDay.AddDays(1));
 
         await db.HashSetAsync(key, [
             new HashEntry(FieldUser, user),
@@ -40,7 +41,7 @@ public static class MailboxRedis
     {
         var key = UKey(user);
         var expd = ToYyyyMmDd(expiresDay);
-        var ttl = TtlToRotationUtc(expiresDay);
+        var ttl = TtlToRotationUtc(expiresDay.AddDays(-5));
 
         await db.HashSetAsync(key, [
             new HashEntry(FieldMailbox, mailbox.ToString("N")),
@@ -86,7 +87,7 @@ public static class MailboxRedis
 
         var expiresDay = FromYyyyMmDd(expd);
 
-        if (DateOnly.FromDateTime(DateTime.UtcNow) >= expiresDay)
+        if (expiresDay != CurrentMailboxExpiresDay())
             return null;
 
         return new MailboxMap(mb, expiresDay);

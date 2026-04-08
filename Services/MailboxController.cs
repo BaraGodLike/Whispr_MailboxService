@@ -33,7 +33,7 @@ public class MailboxController(IMailboxRepository repository) : ControllerBase
             new UserMailbox(
                 user,
                 MailboxAddress: Guid.NewGuid(),
-                ExpiresDay: DateOnly.FromDateTime(DateTime.Today + TimeSpan.FromDays(7))),
+                ExpiresDay: DateOnly.FromDateTime(DateTime.UtcNow + TimeSpan.FromDays(6))),
             ctn);
         return Created();
     }

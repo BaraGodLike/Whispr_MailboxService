@@ -8,7 +8,6 @@ namespace Infrastructure.Storage;
 public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRepository
 {
     private const string HistoryTable = @"""UserMailboxes""";
-    private const string CurrentTable = @"""UserCurrentMailboxes""";
     private static DateTime ToDbDate(DateOnly date) => date.ToDateTime(TimeOnly.MinValue);
 
     public async Task<MailboxOwner> GetUserByMailboxAsync(Guid mailboxAddress, CancellationToken ctn)
@@ -38,8 +37,9 @@ public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRep
             SELECT
                 "MailboxAddress" AS "Mailbox",
                 "ExpiresDay"     AS "ExpiresDay"
-            FROM {CurrentTable}
+            FROM {HistoryTable}
             WHERE "User" = @User
+              AND "ExpiresDay" = (current_date + interval '6 days')::date
             LIMIT 1;
             """;
 
@@ -63,15 +63,6 @@ public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRep
             VALUES (@ExpiresDay, @MailboxAddress, @User);
             """;
 
-        const string upsertCurrentSql = $"""
-            INSERT INTO {CurrentTable} ("User", "MailboxAddress", "ExpiresDay")
-            VALUES (@User, @MailboxAddress, @ExpiresDay)
-            ON CONFLICT ("User")
-            DO UPDATE SET
-                "MailboxAddress" = EXCLUDED."MailboxAddress",
-                "ExpiresDay"     = EXCLUDED."ExpiresDay";
-            """;
-
         await using var conn = await dataSource.OpenConnectionAsync(ctn);
         await using var tx = await conn.BeginTransactionAsync(ctn);
 
@@ -86,9 +77,6 @@ public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRep
 
             await conn.ExecuteAsync(new CommandDefinition(
                 insertHistorySql, p, transaction: tx, cancellationToken: ctn));
-
-            await conn.ExecuteAsync(new CommandDefinition(
-                upsertCurrentSql, p, transaction: tx, cancellationToken: ctn));
 
             await tx.CommitAsync(ctn);
         }

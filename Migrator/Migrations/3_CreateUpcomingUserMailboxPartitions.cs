@@ -1,6 +1,6 @@
 using FluentMigrator;
 
-namespace Migrator.Migrations;
+namespace Migrator;
 
 [Migration(3)]
 public sealed class CreateUpcomingUserMailboxPartitions : Migration
