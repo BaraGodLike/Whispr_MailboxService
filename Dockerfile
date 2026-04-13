@@ -5,8 +5,8 @@ COPY ["Whispr_MailboxService.sln", "./"]
 COPY ["Application/Application.csproj", "Application/"]
 COPY ["Infrastructure.Storage/Infrastructure.Storage.csproj", "Infrastructure.Storage/"]
 COPY ["Migrator/Migrator.csproj", "Migrator/"]
-COPY ["Model/Model.csproj", "Model/"]
 COPY ["Services/Services.csproj", "Services/"]
+COPY ["Worker/Worker.csproj", "Worker/"]
 
 RUN dotnet restore "Whispr_MailboxService.sln"
 

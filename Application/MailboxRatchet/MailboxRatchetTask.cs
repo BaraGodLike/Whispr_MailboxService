@@ -1,12 +1,6 @@
-﻿using Model;
+﻿namespace Application;
 
-namespace Application.MailboxRatchet;
-
-public class MailboxRatchetTask(IMailboxRepository repository)
+public class MailboxRatchetTask(IMailboxMaintenanceService maintenanceService) : IBackgroundTask
 {
-    public async Task Run(CancellationToken ctn)
-    {
-        
-        
-    } 
+    public Task Run(CancellationToken ctn) => maintenanceService.RunDailyRotationAsync(ctn);
 }
