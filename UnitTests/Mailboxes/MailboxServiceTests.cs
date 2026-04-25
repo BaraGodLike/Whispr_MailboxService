@@ -1,4 +1,5 @@
 using Application;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace UnitTests.Mailboxes;
 
@@ -10,7 +11,7 @@ public sealed class MailboxServiceTests
     {
         var repository = new FakeMailboxRepository();
         var dateTimeProvider = new FakeDateTimeProvider(new DateOnly(2026, 4, 25));
-        var sut = new MailboxService(repository, dateTimeProvider);
+        var sut = new MailboxService(repository, dateTimeProvider, NullLogger<MailboxService>.Instance);
 
         var result = await sut.GetUserByMailboxAsync(Guid.NewGuid(), CancellationToken.None);
 
@@ -23,7 +24,7 @@ public sealed class MailboxServiceTests
         var owner = new MailboxOwner("alice", new DateOnly(2026, 5, 1));
         var repository = new FakeMailboxRepository { OwnerResult = owner };
         var dateTimeProvider = new FakeDateTimeProvider(new DateOnly(2026, 4, 25));
-        var sut = new MailboxService(repository, dateTimeProvider);
+        var sut = new MailboxService(repository, dateTimeProvider, NullLogger<MailboxService>.Instance);
 
         var result = await sut.GetUserByMailboxAsync(Guid.NewGuid(), CancellationToken.None);
 
@@ -39,7 +40,7 @@ public sealed class MailboxServiceTests
             OwnerResult = new MailboxOwner("alice", new DateOnly(2026, 4, 25))
         };
         var dateTimeProvider = new FakeDateTimeProvider(new DateOnly(2026, 4, 25));
-        var sut = new MailboxService(repository, dateTimeProvider);
+        var sut = new MailboxService(repository, dateTimeProvider, NullLogger<MailboxService>.Instance);
 
         var result = await sut.GetUserByMailboxAsync(Guid.NewGuid(), CancellationToken.None);
 
@@ -52,7 +53,7 @@ public sealed class MailboxServiceTests
         var mailbox = new MailboxMap(Guid.NewGuid(), new DateOnly(2026, 5, 1));
         var repository = new FakeMailboxRepository { CurrentMailboxResult = mailbox };
         var dateTimeProvider = new FakeDateTimeProvider(new DateOnly(2026, 4, 25));
-        var sut = new MailboxService(repository, dateTimeProvider);
+        var sut = new MailboxService(repository, dateTimeProvider, NullLogger<MailboxService>.Instance);
         using var cts = new CancellationTokenSource();
 
         var result = await sut.GetCurrentMailboxForUserAsync("alice", cts.Token);
@@ -69,7 +70,7 @@ public sealed class MailboxServiceTests
     {
         var repository = new FakeMailboxRepository();
         var dateTimeProvider = new FakeDateTimeProvider(new DateOnly(2026, 4, 25));
-        var sut = new MailboxService(repository, dateTimeProvider);
+        var sut = new MailboxService(repository, dateTimeProvider, NullLogger<MailboxService>.Instance);
 
         var result = await sut.GetCurrentMailboxForUserAsync("missing-user", CancellationToken.None);
 
@@ -82,7 +83,7 @@ public sealed class MailboxServiceTests
         var mailbox = new MailboxMap(Guid.NewGuid(), new DateOnly(2026, 5, 1));
         var repository = new FakeMailboxRepository { CreateMailboxResult = mailbox };
         var dateTimeProvider = new FakeDateTimeProvider(new DateOnly(2026, 4, 25));
-        var sut = new MailboxService(repository, dateTimeProvider);
+        var sut = new MailboxService(repository, dateTimeProvider, NullLogger<MailboxService>.Instance);
         using var cts = new CancellationTokenSource();
 
         var result = await sut.CreateMailboxAsync("alice", cts.Token);

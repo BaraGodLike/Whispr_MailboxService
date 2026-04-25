@@ -1,10 +1,11 @@
 using Application;
 using Dapper;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 
 namespace Infrastructure.Storage;
 
-public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRepository
+public sealed class MailboxRepository(NpgsqlDataSource dataSource, ILogger<MailboxRepository> logger) : IMailboxRepository
 {
     private const string HistoryTable = @"""UserMailboxes""";
     private const string RegistryTable = @"""MailboxRegistry""";
@@ -21,12 +22,20 @@ public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRep
             LIMIT 1;
             """;
 
-        await using var conn = await dataSource.OpenConnectionAsync(ctn);
+        try
+        {
+            await using var conn = await dataSource.OpenConnectionAsync(ctn);
 
-        return await conn.QuerySingleOrDefaultAsync<MailboxOwner>(new CommandDefinition(
-            sql,
-            new { MailboxAddress = mailboxAddress },
-            cancellationToken: ctn));
+            return await conn.QuerySingleOrDefaultAsync<MailboxOwner>(new CommandDefinition(
+                sql,
+                new { MailboxAddress = mailboxAddress },
+                cancellationToken: ctn));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError("Mailbox owner storage lookup failed. ExceptionType: {ExceptionType}.", ex.GetType().FullName);
+            throw;
+        }
     }
 
     public async Task<MailboxMap> GetCurrentMailboxForUserAsync(string user, DateOnly expiresDay, CancellationToken ctn)
@@ -41,16 +50,24 @@ public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRep
             LIMIT 1;
             """;
 
-        await using var conn = await dataSource.OpenConnectionAsync(ctn);
+        try
+        {
+            await using var conn = await dataSource.OpenConnectionAsync(ctn);
 
-        return await conn.QuerySingleOrDefaultAsync<MailboxMap>(new CommandDefinition(
-            sql,
-            new
-            {
-                User = user,
-                ExpiresDay = ToDbDate(expiresDay)
-            },
-            cancellationToken: ctn));
+            return await conn.QuerySingleOrDefaultAsync<MailboxMap>(new CommandDefinition(
+                sql,
+                new
+                {
+                    User = user,
+                    ExpiresDay = ToDbDate(expiresDay)
+                },
+                cancellationToken: ctn));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError("Current mailbox storage lookup failed. ExceptionType: {ExceptionType}.", ex.GetType().FullName);
+            throw;
+        }
     }
 
     public async Task<MailboxMap> CreateMailboxAsync(string user, MailboxSchedule schedule, CancellationToken ctn)
@@ -127,9 +144,20 @@ public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRep
             await tx.CommitAsync(ctn);
             return currentMailbox;
         }
-        catch
+        catch (Exception ex)
         {
-            await tx.RollbackAsync(ctn);
+            logger.LogError("Mailbox creation transaction failed. ExceptionType: {ExceptionType}.", ex.GetType().FullName);
+            try
+            {
+                await tx.RollbackAsync(ctn);
+            }
+            catch (Exception rollbackException)
+            {
+                logger.LogError(
+                    "Mailbox creation transaction rollback failed. ExceptionType: {ExceptionType}.",
+                    rollbackException.GetType().FullName);
+            }
+
             throw;
         }
     }
@@ -199,9 +227,20 @@ public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRep
 
             await tx.CommitAsync(ctn);
         }
-        catch
+        catch (Exception ex)
         {
-            await tx.RollbackAsync(ctn);
+            logger.LogError("Mailbox rotation transaction failed. ExceptionType: {ExceptionType}.", ex.GetType().FullName);
+            try
+            {
+                await tx.RollbackAsync(ctn);
+            }
+            catch (Exception rollbackException)
+            {
+                logger.LogError(
+                    "Mailbox rotation transaction rollback failed. ExceptionType: {ExceptionType}.",
+                    rollbackException.GetType().FullName);
+            }
+
             throw;
         }
     }

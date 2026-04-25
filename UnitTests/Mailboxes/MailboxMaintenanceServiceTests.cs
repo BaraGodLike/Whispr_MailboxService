@@ -1,4 +1,5 @@
 using Application;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace UnitTests.Mailboxes;
 
@@ -10,7 +11,10 @@ public sealed class MailboxMaintenanceServiceTests
     {
         var repository = new FakeMailboxRepository();
         var dateTimeProvider = new FakeDateTimeProvider(new DateOnly(2026, 4, 25));
-        var sut = new MailboxMaintenanceService(repository, dateTimeProvider);
+        var sut = new MailboxMaintenanceService(
+            repository,
+            dateTimeProvider,
+            NullLogger<MailboxMaintenanceService>.Instance);
         using var cts = new CancellationTokenSource();
 
         await sut.RunDailyRotationAsync(cts.Token);
@@ -26,7 +30,10 @@ public sealed class MailboxMaintenanceServiceTests
         var expectedException = new InvalidOperationException("rotation failed");
         var repository = new FakeMailboxRepository { RotateException = expectedException };
         var dateTimeProvider = new FakeDateTimeProvider(new DateOnly(2026, 4, 25));
-        var sut = new MailboxMaintenanceService(repository, dateTimeProvider);
+        var sut = new MailboxMaintenanceService(
+            repository,
+            dateTimeProvider,
+            NullLogger<MailboxMaintenanceService>.Instance);
 
         try
         {
