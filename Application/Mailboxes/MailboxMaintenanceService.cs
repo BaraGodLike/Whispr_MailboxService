@@ -30,6 +30,10 @@ public sealed class MailboxMaintenanceService(
                 schedule.NextExpiresDay,
                 schedule.ExpiredPartitionDay);
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             logger.LogError("Daily mailbox rotation failed. ExceptionType: {ExceptionType}.", ex.GetType().FullName);

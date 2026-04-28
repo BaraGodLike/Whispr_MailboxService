@@ -22,6 +22,10 @@ public sealed class CachedMailboxRepository(
             if (cached.HasValue)
                 return cached.Value;
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             logger.LogWarning(
@@ -43,6 +47,10 @@ public sealed class CachedMailboxRepository(
                 now,
                 ctn);
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             logger.LogWarning(
@@ -60,6 +68,10 @@ public sealed class CachedMailboxRepository(
             var cached = await MailboxRedis.TryGetMailboxAsync(cache, user, expiresDay);
             if (cached.HasValue)
                 return cached.Value;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -82,6 +94,10 @@ public sealed class CachedMailboxRepository(
                 mailbox.ExpiresDay,
                 now,
                 ctn);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -108,6 +124,10 @@ public sealed class CachedMailboxRepository(
                 now,
                 ctn);
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             logger.LogWarning(
@@ -124,6 +144,10 @@ public sealed class CachedMailboxRepository(
                 mailbox.ExpiresDay,
                 now,
                 ctn);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {

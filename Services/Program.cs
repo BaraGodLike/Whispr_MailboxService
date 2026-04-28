@@ -37,8 +37,11 @@ app.UseExceptionHandler(exceptionApp =>
         var exceptionFeature = context.Features.Get<IExceptionHandlerFeature>();
         if (exceptionFeature?.Error is { } exception)
         {
-            var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-            logger.LogError("Unhandled API exception. ExceptionType: {ExceptionType}.", exception.GetType().FullName);
+            if (exception is not OperationCanceledException)
+            {
+                var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+                logger.LogError("Unhandled API exception. ExceptionType: {ExceptionType}.", exception.GetType().FullName);
+            }
         }
 
         context.Response.StatusCode = StatusCodes.Status500InternalServerError;
