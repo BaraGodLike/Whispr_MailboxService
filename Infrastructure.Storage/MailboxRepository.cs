@@ -127,6 +127,10 @@ public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRep
             await tx.CommitAsync(ctn);
             return currentMailbox;
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch
         {
             await tx.RollbackAsync(ctn);
@@ -198,6 +202,10 @@ public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRep
                 cancellationToken: ctn));
 
             await tx.CommitAsync(ctn);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {

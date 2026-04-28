@@ -20,7 +20,8 @@ builder.Services.AddScoped<IMailboxRepository>(sp =>
     new CachedMailboxRepository(
         sp.GetRequiredService<MailboxRepository>(),
         sp.GetRequiredService<IDatabase>(),
-        sp.GetRequiredService<IDateTimeProvider>()));
+        sp.GetRequiredService<IDateTimeProvider>(),
+        sp.GetRequiredService<ILogger<CachedMailboxRepository>>()));
 builder.Services.AddScoped<IMailboxMaintenanceService, MailboxMaintenanceService>();
 builder.Services.AddScoped<IBackgroundTask, MailboxRatchetTask>();
 
