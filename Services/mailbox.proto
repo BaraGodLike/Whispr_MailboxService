@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+option csharp_namespace = "Services";
+
+package services.mailbox.v1;
+
+import "google/protobuf/timestamp.proto";
+
+service MailboxApi {
+  rpc GetMailbox (GetMailboxRequest) returns (MailboxResponse);
+  rpc GetUser (GetUserRequest) returns (GetUserResponse);
+  rpc CreateMailbox (CreateMailboxRequest) returns (MailboxResponse);
+}
+
+message GetMailboxRequest {
+  string user = 1;
+}
+
+message GetUserRequest {
+  string mailbox = 1;
+}
+
+message CreateMailboxRequest {
+  string user = 1;
+}
+
+message MailboxResponse {
+  string mailbox_address = 1;
+  google.protobuf.Timestamp refresh_after_utc = 2;
+}
+
+message GetUserResponse {
+  string user = 1;
+}
