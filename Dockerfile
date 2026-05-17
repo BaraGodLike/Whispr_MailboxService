@@ -7,6 +7,7 @@ COPY ["Infrastructure.Storage/Infrastructure.Storage.csproj", "Infrastructure.St
 COPY ["Migrator/Migrator.csproj", "Migrator/"]
 COPY ["Services/Services.csproj", "Services/"]
 COPY ["Worker/Worker.csproj", "Worker/"]
+COPY ["UnitTests/UnitTests.csproj", "UnitTests/"]
 
 RUN dotnet restore "Whispr_MailboxService.sln"
 
@@ -16,8 +17,8 @@ RUN dotnet publish "Services/Services.csproj" -c Release -o /app/publish /p:UseA
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 
-ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
+EXPOSE 8443
 
 COPY --from=build /app/publish .
 

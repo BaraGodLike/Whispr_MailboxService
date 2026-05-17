@@ -1,10 +1,24 @@
 using Application;
 using Infrastructure.Storage;
-using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Npgsql;
+using Services;
 using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.ListenAnyIP(8080, listenOptions =>
+    {
+        listenOptions.Protocols = HttpProtocols.Http1;
+    });
+
+    options.ListenAnyIP(8443, listenOptions =>
+    {
+        listenOptions.UseHttps();
+        listenOptions.Protocols = HttpProtocols.Http2;
+    });
+});
 
 var postgresConnectionString = builder.Configuration.GetConnectionString("Postgres")
     ?? throw new InvalidOperationException("Connection string 'Postgres' is not configured.");
@@ -12,6 +26,8 @@ var redisConnectionString = builder.Configuration.GetConnectionString("Redis")
     ?? throw new InvalidOperationException("Connection string 'Redis' is not configured.");
 
 builder.Services.AddControllers();
+builder.Services.AddGrpc();
+builder.Services.AddHealthChecks();
 builder.Services.AddProblemDetails();
 
 builder.Services.AddSingleton(_ => new NpgsqlDataSourceBuilder(postgresConnectionString).Build());
@@ -30,18 +46,20 @@ builder.Services.AddScoped<IMailboxService, MailboxService>();
 
 var app = builder.Build();
 
-app.UseExceptionHandler(exceptionApp =>
+app.Use(async (context, next) =>
 {
-    exceptionApp.Run(async context =>
+    try
     {
-        var exceptionFeature = context.Features.Get<IExceptionHandlerFeature>();
-        if (exceptionFeature?.Error is { } exception)
+        await next();
+    }
+    catch (Exception exception) when (exception is not OperationCanceledException)
+    {
+        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+        logger.LogError("Unhandled API exception. ExceptionType: {ExceptionType}.", exception.GetType().FullName);
+
+        if (IsGrpcRequest(context))
         {
-            if (exception is not OperationCanceledException)
-            {
-                var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-                logger.LogError("Unhandled API exception. ExceptionType: {ExceptionType}.", exception.GetType().FullName);
-            }
+            throw;
         }
 
         context.Response.StatusCode = StatusCodes.Status500InternalServerError;
@@ -52,9 +70,14 @@ app.UseExceptionHandler(exceptionApp =>
                 title: "Internal Server Error",
                 detail: "An unexpected server error occurred.")
             .ExecuteAsync(context);
-    });
+    }
 });
 
 app.MapControllers();
+app.MapGrpcService<MailboxGrpcService>();
+app.MapHealthChecks("/health");
 
 app.Run();
+
+static bool IsGrpcRequest(HttpContext context) =>
+    context.Request.ContentType?.StartsWith("application/grpc", StringComparison.OrdinalIgnoreCase) == true;

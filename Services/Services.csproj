@@ -11,6 +11,10 @@
     </ItemGroup>
 
     <ItemGroup>
+      <Protobuf Include="mailbox.proto" GrpcServices="Server" />
+    </ItemGroup>
+
+    <ItemGroup>
       <ProjectReference Include="..\Application\Application.csproj" />
       <ProjectReference Include="..\Infrastructure.Storage\Infrastructure.Storage.csproj" />
     </ItemGroup>
