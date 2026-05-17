@@ -38,11 +38,11 @@ public sealed class MailboxGrpcService(IMailboxService mailboxService) : Mailbox
         };
     }
 
-    public override async Task<MailboxResponse> CreateMailbox(CreateMailboxRequest request, ServerCallContext context)
+    public override async Task<Empty> CreateMailbox(CreateMailboxRequest request, ServerCallContext context)
     {
         var user = ValidateUser(request.User);
-        var mailbox = await mailboxService.CreateMailboxAsync(user, context.CancellationToken);
-        return CreateMailboxResponse(mailbox);
+        await mailboxService.CreateMailboxAsync(user, context.CancellationToken);
+        return new Empty();
     }
 
     private static string ValidateUser(string user)

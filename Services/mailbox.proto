@@ -5,11 +5,12 @@ option csharp_namespace = "Services";
 package services.mailbox.v1;
 
 import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
 
 service MailboxApi {
   rpc GetMailbox (GetMailboxRequest) returns (MailboxResponse);
   rpc GetUser (GetUserRequest) returns (GetUserResponse);
-  rpc CreateMailbox (CreateMailboxRequest) returns (MailboxResponse);
+  rpc CreateMailbox (CreateMailboxRequest) returns (google.protobuf.Empty);
 }
 
 message GetMailboxRequest {
