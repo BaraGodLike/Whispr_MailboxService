@@ -1,19 +1,30 @@
 using Application;
+using Grpc.AspNetCore.HealthChecks;
 using Infrastructure.Storage;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Npgsql;
 using Services;
 using StackExchange.Redis;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Logging.ClearProviders();
+builder.Logging.AddConfiguration(builder.Configuration.GetSection("Logging"));
+builder.Logging.AddJsonConsole(options =>
+{
+    options.IncludeScopes = false;
+    options.TimestampFormat = "yyyy-MM-ddTHH:mm:ss.fffZ";
+    options.UseUtcTimestamp = true;
+    options.JsonWriterOptions = new JsonWriterOptions
+    {
+        Indented = false
+    };
+});
+var grpcPort = builder.Configuration.GetValue<int?>("Ports:Grpc") ?? 8443;
 builder.WebHost.ConfigureKestrel(options =>
 {
-    options.ListenAnyIP(8080, listenOptions =>
-    {
-        listenOptions.Protocols = HttpProtocols.Http1;
-    });
-
-    options.ListenAnyIP(8443, listenOptions =>
+    options.ListenAnyIP(grpcPort, listenOptions =>
     {
         listenOptions.UseHttps();
         listenOptions.Protocols = HttpProtocols.Http2;
@@ -25,15 +36,18 @@ var postgresConnectionString = builder.Configuration.GetConnectionString("Postgr
 var redisConnectionString = builder.Configuration.GetConnectionString("Redis")
     ?? throw new InvalidOperationException("Connection string 'Redis' is not configured.");
 
-builder.Services.AddControllers();
 builder.Services.AddGrpc();
-builder.Services.AddHealthChecks();
-builder.Services.AddProblemDetails();
+builder.Services
+    .AddGrpcHealthChecks()
+    .AddCheck("self", () => HealthCheckResult.Healthy());
 
 builder.Services.AddSingleton(_ => new NpgsqlDataSourceBuilder(postgresConnectionString).Build());
 builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
 builder.Services.AddSingleton(sp => sp.GetRequiredService<IConnectionMultiplexer>().GetDatabase());
 builder.Services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
+builder.Services.AddSingleton<IRealtimeAuthNonceStore, RedisRealtimeAuthNonceStore>();
+builder.Services.AddSingleton<IRealtimeAuthSignatureVerifier, Ed25519RealtimeAuthSignatureVerifier>();
+builder.Services.AddSingleton<IServiceInstanceMetadata>(_ => new ServiceInstanceMetadata("MailboxService"));
 
 builder.Services.AddScoped<MailboxRepository>();
 builder.Services.AddScoped<IMailboxRepository>(sp =>
@@ -41,13 +55,24 @@ builder.Services.AddScoped<IMailboxRepository>(sp =>
         sp.GetRequiredService<MailboxRepository>(),
         sp.GetRequiredService<IDatabase>(),
         sp.GetRequiredService<IDateTimeProvider>(),
+        sp.GetRequiredService<IServiceInstanceMetadata>(),
         sp.GetRequiredService<ILogger<CachedMailboxRepository>>()));
 builder.Services.AddScoped<IMailboxService, MailboxService>();
 
 var app = builder.Build();
+var serviceInstanceMetadata = app.Services.GetRequiredService<IServiceInstanceMetadata>();
+var startupLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+
+startupLogger.LogInformation(
+    "gRPC host starting. Service: {Service}, Instance: {Instance}, Endpoint: {Endpoint}.",
+    serviceInstanceMetadata.ServiceName,
+    serviceInstanceMetadata.InstanceId,
+    $"https://0.0.0.0:{grpcPort}");
 
 app.Use(async (context, next) =>
 {
+    var instanceMetadata = context.RequestServices.GetRequiredService<IServiceInstanceMetadata>();
+
     try
     {
         await next();
@@ -55,29 +80,17 @@ app.Use(async (context, next) =>
     catch (Exception exception) when (exception is not OperationCanceledException)
     {
         var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-        logger.LogError("Unhandled API exception. ExceptionType: {ExceptionType}.", exception.GetType().FullName);
-
-        if (IsGrpcRequest(context))
-        {
-            throw;
-        }
-
-        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-        context.Response.ContentType = "application/problem+json";
-
-        await Results.Problem(
-                statusCode: StatusCodes.Status500InternalServerError,
-                title: "Internal Server Error",
-                detail: "An unexpected server error occurred.")
-            .ExecuteAsync(context);
+        logger.LogError(
+            "Unhandled API exception. Service: {Service}, Instance: {Instance}, RequestId: {RequestId}, ExceptionType: {ExceptionType}.",
+            instanceMetadata.ServiceName,
+            instanceMetadata.InstanceId,
+            context.TraceIdentifier,
+            exception.GetType().FullName);
+        throw;
     }
 });
 
-app.MapControllers();
 app.MapGrpcService<MailboxGrpcService>();
-app.MapHealthChecks("/health");
+app.MapGrpcHealthChecksService();
 
 app.Run();
-
-static bool IsGrpcRequest(HttpContext context) =>
-    context.Request.ContentType?.StartsWith("application/grpc", StringComparison.OrdinalIgnoreCase) == true;

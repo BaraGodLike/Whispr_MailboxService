@@ -8,6 +8,7 @@ public sealed class CachedMailboxRepository(
     IMailboxRepository sqlRepository,
     IDatabase cache,
     IDateTimeProvider dateTimeProvider,
+    IServiceInstanceMetadata serviceInstanceMetadata,
     ILogger<CachedMailboxRepository> logger)
     : IMailboxRepository
 {
@@ -29,7 +30,10 @@ public sealed class CachedMailboxRepository(
         catch (Exception ex)
         {
             logger.LogWarning(
-                "Mailbox owner cache read failed. Falling back to storage. ExceptionType: {ExceptionType}.",
+                "Mailbox owner cache read failed. Service: {Service}, Instance: {Instance}, Method: {Method}, ExceptionType: {ExceptionType}.",
+                serviceInstanceMetadata.ServiceName,
+                serviceInstanceMetadata.InstanceId,
+                nameof(GetUserByMailboxAsync),
                 ex.GetType().FullName);
         }
 
@@ -54,7 +58,10 @@ public sealed class CachedMailboxRepository(
         catch (Exception ex)
         {
             logger.LogWarning(
-                "Mailbox owner cache write failed. Continuing without cache. ExceptionType: {ExceptionType}.",
+                "Mailbox owner cache write failed. Service: {Service}, Instance: {Instance}, Method: {Method}, ExceptionType: {ExceptionType}.",
+                serviceInstanceMetadata.ServiceName,
+                serviceInstanceMetadata.InstanceId,
+                nameof(GetUserByMailboxAsync),
                 ex.GetType().FullName);
         }
 
@@ -76,7 +83,11 @@ public sealed class CachedMailboxRepository(
         catch (Exception ex)
         {
             logger.LogWarning(
-                "Current mailbox cache read failed. Falling back to storage. ExceptionType: {ExceptionType}.",
+                "Current mailbox cache read failed. Service: {Service}, Instance: {Instance}, Method: {Method}, ExpectedExpiresDay: {ExpectedExpiresDay}, ExceptionType: {ExceptionType}.",
+                serviceInstanceMetadata.ServiceName,
+                serviceInstanceMetadata.InstanceId,
+                nameof(GetCurrentMailboxForUserAsync),
+                expiresDay,
                 ex.GetType().FullName);
         }
 
@@ -102,62 +113,33 @@ public sealed class CachedMailboxRepository(
         catch (Exception ex)
         {
             logger.LogWarning(
-                "Current mailbox cache write failed. Continuing without cache. ExceptionType: {ExceptionType}.",
+                "Current mailbox cache write failed. Service: {Service}, Instance: {Instance}, Method: {Method}, ExceptionType: {ExceptionType}.",
+                serviceInstanceMetadata.ServiceName,
+                serviceInstanceMetadata.InstanceId,
+                nameof(GetCurrentMailboxForUserAsync),
                 ex.GetType().FullName);
         }
 
         return mailbox;
     }
 
-    public async Task<MailboxMap> CreateMailboxAsync(string user, MailboxSchedule schedule, CancellationToken ctn)
-    {
-        var mailbox = await sqlRepository.CreateMailboxAsync(user, schedule, ctn);
-        var now = dateTimeProvider.GetCurrentDateTime();
+    public Task<bool> RegisterUserAsync(
+        string user,
+        string authAlg,
+        byte[] publicKey,
+        MailboxSchedule schedule,
+        CancellationToken ctn) =>
+        sqlRepository.RegisterUserAsync(user, authAlg, publicKey, schedule, ctn);
 
-        try
-        {
-            await MailboxRedis.SetMailboxAsync(
-                cache,
-                mailbox.Mailbox,
-                user,
-                mailbox.ExpiresDay,
-                now,
-                ctn);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(
-                "Mailbox owner cache write failed. Continuing without cache. ExceptionType: {ExceptionType}.",
-                ex.GetType().FullName);
-        }
+    public Task<UserAuthInfo?> GetUserAuthInfoAsync(string user, CancellationToken ctn) =>
+        sqlRepository.GetUserAuthInfoAsync(user, ctn);
 
-        try
-        {
-            await MailboxRedis.SetUserAsync(
-                cache,
-                mailbox.Mailbox,
-                user,
-                mailbox.ExpiresDay,
-                now,
-                ctn);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(
-                "Current mailbox cache write failed. Continuing without cache. ExceptionType: {ExceptionType}.",
-                ex.GetType().FullName);
-        }
-
-        return mailbox;
-    }
+    public Task<IReadOnlyList<MailboxMap>> GetActiveMailboxesForUserAsync(
+        string user,
+        DateOnly minExpiresDay,
+        DateOnly maxExpiresDay,
+        CancellationToken ctn) =>
+        sqlRepository.GetActiveMailboxesForUserAsync(user, minExpiresDay, maxExpiresDay, ctn);
 
     public Task RotateMailboxesAsync(MailboxSchedule schedule, CancellationToken ctn) =>
         sqlRepository.RotateMailboxesAsync(schedule, ctn);

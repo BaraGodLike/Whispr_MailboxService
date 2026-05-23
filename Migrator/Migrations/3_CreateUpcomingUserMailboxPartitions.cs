@@ -11,7 +11,7 @@ public sealed class CreateUpcomingUserMailboxPartitions : Migration
             SELECT public.ensure_user_mailboxes_partition(d::date)
             FROM generate_series(
                 current_date,
-                current_date + interval '7 days',
+                current_date + interval '1 days',
                 interval '1 day'
             ) AS d;
             """);

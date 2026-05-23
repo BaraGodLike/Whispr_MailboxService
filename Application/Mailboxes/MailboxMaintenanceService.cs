@@ -5,6 +5,7 @@ namespace Application;
 public sealed class MailboxMaintenanceService(
     IMailboxRepository repository,
     IDateTimeProvider dateTimeProvider,
+    IServiceInstanceMetadata serviceInstanceMetadata,
     ILogger<MailboxMaintenanceService> logger)
     : IMailboxMaintenanceService
 {
@@ -15,7 +16,9 @@ public sealed class MailboxMaintenanceService(
         try
         {
             logger.LogInformation(
-                "Daily mailbox rotation started. Today: {Today}, CurrentExpiresDay: {CurrentExpiresDay}, NextExpiresDay: {NextExpiresDay}, ExpiredPartitionDay: {ExpiredPartitionDay}.",
+                "Mailbox rotation started. Service: {Service}, Instance: {Instance}, Today: {Today}, CurrentExpiresDay: {CurrentExpiresDay}, NextExpiresDay: {NextExpiresDay}, ExpiredPartitionDay: {ExpiredPartitionDay}.",
+                serviceInstanceMetadata.ServiceName,
+                serviceInstanceMetadata.InstanceId,
                 schedule.Today,
                 schedule.CurrentExpiresDay,
                 schedule.NextExpiresDay,
@@ -24,7 +27,9 @@ public sealed class MailboxMaintenanceService(
             await repository.RotateMailboxesAsync(schedule, ctn);
 
             logger.LogInformation(
-                "Daily mailbox rotation completed. Today: {Today}, CurrentExpiresDay: {CurrentExpiresDay}, NextExpiresDay: {NextExpiresDay}, ExpiredPartitionDay: {ExpiredPartitionDay}.",
+                "Mailbox rotation completed. Service: {Service}, Instance: {Instance}, Today: {Today}, CurrentExpiresDay: {CurrentExpiresDay}, NextExpiresDay: {NextExpiresDay}, ExpiredPartitionDay: {ExpiredPartitionDay}.",
+                serviceInstanceMetadata.ServiceName,
+                serviceInstanceMetadata.InstanceId,
                 schedule.Today,
                 schedule.CurrentExpiresDay,
                 schedule.NextExpiresDay,
@@ -36,7 +41,11 @@ public sealed class MailboxMaintenanceService(
         }
         catch (Exception ex)
         {
-            logger.LogError("Daily mailbox rotation failed. ExceptionType: {ExceptionType}.", ex.GetType().FullName);
+            logger.LogError(
+                "Mailbox rotation failed. Service: {Service}, Instance: {Instance}, ExceptionType: {ExceptionType}.",
+                serviceInstanceMetadata.ServiceName,
+                serviceInstanceMetadata.InstanceId,
+                ex.GetType().FullName);
             throw;
         }
     }

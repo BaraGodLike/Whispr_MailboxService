@@ -8,7 +8,29 @@ public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRep
 {
     private const string HistoryTable = @"""UserMailboxes""";
     private const string RegistryTable = @"""MailboxRegistry""";
+    private const string UsersTable = @"""Users""";
     private static DateTime ToDbDate(DateOnly date) => date.ToDateTime(TimeOnly.MinValue);
+
+    private const string EnsurePartitionsSql = """
+        SELECT ensure_user_mailboxes_partition(@CurrentExpiresDay::date);
+        SELECT ensure_user_mailboxes_partition(@NextExpiresDay::date);
+        """;
+
+    private static string UpsertMailboxSql => $"""
+        INSERT INTO {HistoryTable} ("ExpiresDay", "MailboxAddress", "User")
+        VALUES (@ExpiresDay::date, gen_random_uuid(), @User)
+        ON CONFLICT ("User", "ExpiresDay") DO UPDATE
+        SET "User" = EXCLUDED."User"
+        RETURNING
+            "MailboxAddress" AS "Mailbox",
+            "ExpiresDay"     AS "ExpiresDay";
+        """;
+
+    private static string EnsureRegistrySql => $"""
+        INSERT INTO {RegistryTable} ("MailboxAddress")
+        VALUES (@MailboxAddress)
+        ON CONFLICT ("MailboxAddress") DO NOTHING;
+        """;
 
     public async Task<MailboxOwner> GetUserByMailboxAsync(Guid mailboxAddress, CancellationToken ctn)
     {
@@ -53,27 +75,17 @@ public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRep
             cancellationToken: ctn));
     }
 
-    public async Task<MailboxMap> CreateMailboxAsync(string user, MailboxSchedule schedule, CancellationToken ctn)
+    public async Task<bool> RegisterUserAsync(
+        string user,
+        string authAlg,
+        byte[] publicKey,
+        MailboxSchedule schedule,
+        CancellationToken ctn)
     {
-        const string ensurePartitionsSql = """
-            SELECT ensure_user_mailboxes_partition(@CurrentExpiresDay::date);
-            SELECT ensure_user_mailboxes_partition(@NextExpiresDay::date);
-            """;
-
-        var upsertMailboxSql = $"""
-            INSERT INTO {HistoryTable} ("ExpiresDay", "MailboxAddress", "User")
-            VALUES (@ExpiresDay::date, gen_random_uuid(), @User)
-            ON CONFLICT ("User", "ExpiresDay") DO UPDATE
-            SET "User" = EXCLUDED."User"
-            RETURNING
-                "MailboxAddress" AS "Mailbox",
-                "ExpiresDay"     AS "ExpiresDay";
-            """;
-
-        var ensureRegistrySql = $"""
-            INSERT INTO {RegistryTable} ("MailboxAddress")
-            VALUES (@MailboxAddress)
-            ON CONFLICT ("MailboxAddress") DO NOTHING;
+        var sql = $"""
+            INSERT INTO {UsersTable} ("User", "AuthAlg", "PublicKey")
+            VALUES (@User, @AuthAlg, @PublicKey)
+            ON CONFLICT ("User") DO NOTHING;
             """;
 
         await using var conn = await dataSource.OpenConnectionAsync(ctn);
@@ -81,51 +93,27 @@ public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRep
 
         try
         {
-            var currentExpiresDay = ToDbDate(schedule.CurrentExpiresDay);
-            var nextExpiresDay = ToDbDate(schedule.NextExpiresDay);
-
-            await conn.ExecuteAsync(new CommandDefinition(
-                ensurePartitionsSql,
-                new
-                {
-                    CurrentExpiresDay = currentExpiresDay,
-                    NextExpiresDay = nextExpiresDay
-                },
-                transaction: tx,
-                cancellationToken: ctn));
-
-            var currentMailbox = await conn.QuerySingleAsync<MailboxMap>(new CommandDefinition(
-                upsertMailboxSql,
+            var inserted = await conn.ExecuteAsync(new CommandDefinition(
+                sql,
                 new
                 {
                     User = user,
-                    ExpiresDay = currentExpiresDay
+                    AuthAlg = authAlg,
+                    PublicKey = publicKey
                 },
                 transaction: tx,
                 cancellationToken: ctn));
 
-            var nextMailbox = await conn.QuerySingleAsync<MailboxMap>(new CommandDefinition(
-                upsertMailboxSql,
-                new
-                {
-                    User = user,
-                    ExpiresDay = nextExpiresDay
-                },
-                transaction: tx,
-                cancellationToken: ctn));
+            if (inserted == 0)
+            {
+                await tx.RollbackAsync(ctn);
+                return false;
+            }
 
-            await conn.ExecuteAsync(new CommandDefinition(
-                ensureRegistrySql,
-                new[]
-                {
-                    new { MailboxAddress = currentMailbox.Mailbox },
-                    new { MailboxAddress = nextMailbox.Mailbox }
-                },
-                transaction: tx,
-                cancellationToken: ctn));
+            await CreateMailboxCoreAsync(conn, tx, user, schedule, ctn);
 
             await tx.CommitAsync(ctn);
-            return currentMailbox;
+            return true;
         }
         catch (OperationCanceledException)
         {
@@ -136,6 +124,58 @@ public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRep
             await tx.RollbackAsync(ctn);
             throw;
         }
+    }
+
+    public async Task<UserAuthInfo?> GetUserAuthInfoAsync(string user, CancellationToken ctn)
+    {
+        var sql = $"""
+            SELECT
+                "User"      AS "User",
+                "AuthAlg"   AS "AuthAlg",
+                "PublicKey" AS "PublicKey"
+            FROM {UsersTable}
+            WHERE "User" = @User
+            LIMIT 1;
+            """;
+
+        await using var conn = await dataSource.OpenConnectionAsync(ctn);
+
+        return await conn.QuerySingleOrDefaultAsync<UserAuthInfo>(new CommandDefinition(
+            sql,
+            new { User = user },
+            cancellationToken: ctn));
+    }
+
+    public async Task<IReadOnlyList<MailboxMap>> GetActiveMailboxesForUserAsync(
+        string user,
+        DateOnly minExpiresDay,
+        DateOnly maxExpiresDay,
+        CancellationToken ctn)
+    {
+        var sql = $"""
+            SELECT
+                "MailboxAddress" AS "Mailbox",
+                "ExpiresDay"     AS "ExpiresDay"
+            FROM {HistoryTable}
+            WHERE "User" = @User
+              AND "ExpiresDay" BETWEEN @MinExpiresDay::date AND @MaxExpiresDay::date
+            ORDER BY "ExpiresDay" DESC
+            LIMIT {MailboxPolicy.ActiveMailboxCount};
+            """;
+
+        await using var conn = await dataSource.OpenConnectionAsync(ctn);
+
+        var results = await conn.QueryAsync<MailboxMap>(new CommandDefinition(
+            sql,
+            new
+            {
+                User = user,
+                MinExpiresDay = ToDbDate(minExpiresDay),
+                MaxExpiresDay = ToDbDate(maxExpiresDay)
+            },
+            cancellationToken: ctn));
+
+        return results.AsList();
     }
 
     public async Task RotateMailboxesAsync(MailboxSchedule schedule, CancellationToken ctn)
@@ -212,6 +252,59 @@ public sealed class MailboxRepository(NpgsqlDataSource dataSource) : IMailboxRep
             await tx.RollbackAsync(ctn);
             throw;
         }
+    }
+
+    private static async Task<MailboxMap> CreateMailboxCoreAsync(
+        NpgsqlConnection conn,
+        NpgsqlTransaction tx,
+        string user,
+        MailboxSchedule schedule,
+        CancellationToken ctn)
+    {
+        var currentExpiresDay = ToDbDate(schedule.CurrentExpiresDay);
+        var nextExpiresDay = ToDbDate(schedule.NextExpiresDay);
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            EnsurePartitionsSql,
+            new
+            {
+                CurrentExpiresDay = currentExpiresDay,
+                NextExpiresDay = nextExpiresDay
+            },
+            transaction: tx,
+            cancellationToken: ctn));
+
+        var currentMailbox = await conn.QuerySingleAsync<MailboxMap>(new CommandDefinition(
+            UpsertMailboxSql,
+            new
+            {
+                User = user,
+                ExpiresDay = currentExpiresDay
+            },
+            transaction: tx,
+            cancellationToken: ctn));
+
+        var nextMailbox = await conn.QuerySingleAsync<MailboxMap>(new CommandDefinition(
+            UpsertMailboxSql,
+            new
+            {
+                User = user,
+                ExpiresDay = nextExpiresDay
+            },
+            transaction: tx,
+            cancellationToken: ctn));
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            EnsureRegistrySql,
+            new[]
+            {
+                new { MailboxAddress = currentMailbox.Mailbox },
+                new { MailboxAddress = nextMailbox.Mailbox }
+            },
+            transaction: tx,
+            cancellationToken: ctn));
+
+        return currentMailbox;
     }
 
     private static int ToYyyyMmDd(DateOnly d) => d.Year * 10000 + d.Month * 100 + d.Day;
