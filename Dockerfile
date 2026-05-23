@@ -17,8 +17,6 @@ RUN dotnet publish "Services/Services.csproj" -c Release -o /app/publish /p:UseA
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 
-EXPOSE 8443
-
 COPY --from=build /app/publish .
 
 ENTRYPOINT ["dotnet", "Services.dll"]

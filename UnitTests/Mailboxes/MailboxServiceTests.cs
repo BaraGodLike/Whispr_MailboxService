@@ -1,5 +1,4 @@
 using Application;
-using Microsoft.Extensions.Logging.Abstractions;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Crypto.Signers;
 using Org.BouncyCastle.Security;
@@ -17,7 +16,7 @@ public sealed class MailboxServiceTests
     {
         var repository = new FakeMailboxRepository();
         var dateTimeProvider = new FakeDateTimeProvider(new DateOnly(2026, 4, 25));
-        var sut = new MailboxService(repository, new FakeRealtimeAuthNonceStore(), DefaultVerifiers, dateTimeProvider, NullLogger<MailboxService>.Instance);
+        var sut = new MailboxService(repository, new FakeRealtimeAuthNonceStore(), DefaultVerifiers, dateTimeProvider);
 
         var result = await sut.GetUserByMailboxAsync(Guid.NewGuid(), CancellationToken.None);
 
@@ -30,7 +29,7 @@ public sealed class MailboxServiceTests
         var owner = new MailboxOwner("alice", new DateOnly(2026, 5, 1));
         var repository = new FakeMailboxRepository { OwnerResult = owner };
         var dateTimeProvider = new FakeDateTimeProvider(new DateOnly(2026, 4, 25));
-        var sut = new MailboxService(repository, new FakeRealtimeAuthNonceStore(), DefaultVerifiers, dateTimeProvider, NullLogger<MailboxService>.Instance);
+        var sut = new MailboxService(repository, new FakeRealtimeAuthNonceStore(), DefaultVerifiers, dateTimeProvider);
 
         var result = await sut.GetUserByMailboxAsync(Guid.NewGuid(), CancellationToken.None);
 
@@ -46,7 +45,7 @@ public sealed class MailboxServiceTests
             OwnerResult = new MailboxOwner("alice", new DateOnly(2026, 4, 25))
         };
         var dateTimeProvider = new FakeDateTimeProvider(new DateOnly(2026, 4, 25));
-        var sut = new MailboxService(repository, new FakeRealtimeAuthNonceStore(), DefaultVerifiers, dateTimeProvider, NullLogger<MailboxService>.Instance);
+        var sut = new MailboxService(repository, new FakeRealtimeAuthNonceStore(), DefaultVerifiers, dateTimeProvider);
 
         var result = await sut.GetUserByMailboxAsync(Guid.NewGuid(), CancellationToken.None);
 
@@ -59,7 +58,7 @@ public sealed class MailboxServiceTests
         var mailbox = new MailboxMap(Guid.NewGuid(), new DateOnly(2026, 5, 1));
         var repository = new FakeMailboxRepository { CurrentMailboxResult = mailbox };
         var dateTimeProvider = new FakeDateTimeProvider(new DateOnly(2026, 4, 25));
-        var sut = new MailboxService(repository, new FakeRealtimeAuthNonceStore(), DefaultVerifiers, dateTimeProvider, NullLogger<MailboxService>.Instance);
+        var sut = new MailboxService(repository, new FakeRealtimeAuthNonceStore(), DefaultVerifiers, dateTimeProvider);
         using var cts = new CancellationTokenSource();
 
         var result = await sut.GetCurrentMailboxForUserAsync("alice", cts.Token);
@@ -76,7 +75,7 @@ public sealed class MailboxServiceTests
     {
         var repository = new FakeMailboxRepository();
         var dateTimeProvider = new FakeDateTimeProvider(new DateOnly(2026, 4, 25));
-        var sut = new MailboxService(repository, new FakeRealtimeAuthNonceStore(), DefaultVerifiers, dateTimeProvider, NullLogger<MailboxService>.Instance);
+        var sut = new MailboxService(repository, new FakeRealtimeAuthNonceStore(), DefaultVerifiers, dateTimeProvider);
 
         var result = await sut.GetCurrentMailboxForUserAsync("missing-user", CancellationToken.None);
 
@@ -88,18 +87,32 @@ public sealed class MailboxServiceTests
     {
         var repository = new FakeMailboxRepository { RegisterUserResult = true };
         var dateTimeProvider = new FakeDateTimeProvider(new DateOnly(2026, 4, 25));
-        var sut = new MailboxService(repository, new FakeRealtimeAuthNonceStore(), DefaultVerifiers, dateTimeProvider, NullLogger<MailboxService>.Instance);
-        var publicKey = new byte[] { 1, 2, 3, 4 };
+        var sut = new MailboxService(repository, new FakeRealtimeAuthNonceStore(), DefaultVerifiers, dateTimeProvider);
+        var privateKey = new Ed25519PrivateKeyParameters(new SecureRandom());
+        var publicKey = privateKey.GeneratePublicKey().GetEncoded();
         using var cts = new CancellationTokenSource();
 
         var result = await sut.RegisterUserAsync("alice", "Ed25519", publicKey, cts.Token);
 
-        Assert.IsTrue(result);
+        Assert.AreEqual(RegisterUserStatus.Success, result.Status);
         Assert.AreEqual("alice", repository.LastRegisterUserUser);
         Assert.AreEqual("Ed25519", repository.LastRegisterUserAuthAlg);
         CollectionAssert.AreEqual(publicKey, repository.LastRegisterUserPublicKey!);
         Assert.AreEqual(MailboxPolicy.BuildSchedule(new DateOnly(2026, 4, 25)), repository.LastRegisterUserSchedule);
         Assert.AreEqual(cts.Token, repository.LastCancellationToken);
+    }
+
+    [TestMethod]
+    public async Task RegisterUserAsync_ReturnsInvalidPublicKey_WhenKeyDoesNotMatchAlgorithm()
+    {
+        var repository = new FakeMailboxRepository { RegisterUserResult = true };
+        var dateTimeProvider = new FakeDateTimeProvider(new DateOnly(2026, 4, 25));
+        var sut = new MailboxService(repository, new FakeRealtimeAuthNonceStore(), DefaultVerifiers, dateTimeProvider);
+
+        var result = await sut.RegisterUserAsync("alice", "Ed25519", [1, 2, 3, 4], CancellationToken.None);
+
+        Assert.AreEqual(RegisterUserStatus.InvalidPublicKey, result.Status);
+        Assert.IsNull(repository.LastRegisterUserUser);
     }
 
     [TestMethod]
@@ -111,7 +124,7 @@ public sealed class MailboxServiceTests
         };
         var nonceStore = new FakeRealtimeAuthNonceStore();
         var dateTimeProvider = new FakeDateTimeProvider(new DateOnly(2026, 4, 25));
-        var sut = new MailboxService(repository, nonceStore, DefaultVerifiers, dateTimeProvider, NullLogger<MailboxService>.Instance);
+        var sut = new MailboxService(repository, nonceStore, DefaultVerifiers, dateTimeProvider);
 
         var result = await sut.BeginRealtimeAuthAsync("alice", CancellationToken.None);
 
@@ -153,7 +166,7 @@ public sealed class MailboxServiceTests
         };
         var nonceStore = new FakeRealtimeAuthNonceStore { ConsumeResult = "alice" };
         var dateTimeProvider = new FakeDateTimeProvider(new DateOnly(2026, 4, 25));
-        var sut = new MailboxService(repository, nonceStore, DefaultVerifiers, dateTimeProvider, NullLogger<MailboxService>.Instance);
+        var sut = new MailboxService(repository, nonceStore, DefaultVerifiers, dateTimeProvider);
 
         var result = await sut.CompleteRealtimeAuthAsync(
             "alice",
@@ -180,7 +193,7 @@ public sealed class MailboxServiceTests
         };
         var nonceStore = new FakeRealtimeAuthNonceStore { ConsumeResult = "alice" };
         var dateTimeProvider = new FakeDateTimeProvider(new DateOnly(2026, 4, 25));
-        var sut = new MailboxService(repository, nonceStore, DefaultVerifiers, dateTimeProvider, NullLogger<MailboxService>.Instance);
+        var sut = new MailboxService(repository, nonceStore, DefaultVerifiers, dateTimeProvider);
 
         var result = await sut.CompleteRealtimeAuthAsync(
             "alice",
@@ -204,7 +217,7 @@ public sealed class MailboxServiceTests
         };
         var nonceStore = new FakeRealtimeAuthNonceStore { ConsumeResult = "alice" };
         var dateTimeProvider = new FakeDateTimeProvider(new DateOnly(2026, 4, 25));
-        var sut = new MailboxService(repository, nonceStore, DefaultVerifiers, dateTimeProvider, NullLogger<MailboxService>.Instance);
+        var sut = new MailboxService(repository, nonceStore, DefaultVerifiers, dateTimeProvider);
 
         var result = await sut.CompleteRealtimeAuthAsync(
             "alice",

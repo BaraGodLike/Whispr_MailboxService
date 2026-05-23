@@ -8,6 +8,7 @@ public sealed class CachedMailboxRepository(
     IMailboxRepository sqlRepository,
     IDatabase cache,
     IDateTimeProvider dateTimeProvider,
+    IServiceInstanceMetadata serviceInstanceMetadata,
     ILogger<CachedMailboxRepository> logger)
     : IMailboxRepository
 {
@@ -29,7 +30,10 @@ public sealed class CachedMailboxRepository(
         catch (Exception ex)
         {
             logger.LogWarning(
-                "Mailbox owner cache read failed. Falling back to storage. ExceptionType: {ExceptionType}.",
+                "Mailbox owner cache read failed. Service: {Service}, Instance: {Instance}, Method: {Method}, ExceptionType: {ExceptionType}.",
+                serviceInstanceMetadata.ServiceName,
+                serviceInstanceMetadata.InstanceId,
+                nameof(GetUserByMailboxAsync),
                 ex.GetType().FullName);
         }
 
@@ -54,7 +58,10 @@ public sealed class CachedMailboxRepository(
         catch (Exception ex)
         {
             logger.LogWarning(
-                "Mailbox owner cache write failed. Continuing without cache. ExceptionType: {ExceptionType}.",
+                "Mailbox owner cache write failed. Service: {Service}, Instance: {Instance}, Method: {Method}, ExceptionType: {ExceptionType}.",
+                serviceInstanceMetadata.ServiceName,
+                serviceInstanceMetadata.InstanceId,
+                nameof(GetUserByMailboxAsync),
                 ex.GetType().FullName);
         }
 
@@ -76,7 +83,11 @@ public sealed class CachedMailboxRepository(
         catch (Exception ex)
         {
             logger.LogWarning(
-                "Current mailbox cache read failed. Falling back to storage. ExceptionType: {ExceptionType}.",
+                "Current mailbox cache read failed. Service: {Service}, Instance: {Instance}, Method: {Method}, ExpectedExpiresDay: {ExpectedExpiresDay}, ExceptionType: {ExceptionType}.",
+                serviceInstanceMetadata.ServiceName,
+                serviceInstanceMetadata.InstanceId,
+                nameof(GetCurrentMailboxForUserAsync),
+                expiresDay,
                 ex.GetType().FullName);
         }
 
@@ -102,7 +113,10 @@ public sealed class CachedMailboxRepository(
         catch (Exception ex)
         {
             logger.LogWarning(
-                "Current mailbox cache write failed. Continuing without cache. ExceptionType: {ExceptionType}.",
+                "Current mailbox cache write failed. Service: {Service}, Instance: {Instance}, Method: {Method}, ExceptionType: {ExceptionType}.",
+                serviceInstanceMetadata.ServiceName,
+                serviceInstanceMetadata.InstanceId,
+                nameof(GetCurrentMailboxForUserAsync),
                 ex.GetType().FullName);
         }
 

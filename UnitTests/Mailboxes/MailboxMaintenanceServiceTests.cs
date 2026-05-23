@@ -14,6 +14,7 @@ public sealed class MailboxMaintenanceServiceTests
         var sut = new MailboxMaintenanceService(
             repository,
             dateTimeProvider,
+            new ServiceInstanceMetadata("MailboxService", "test-instance"),
             NullLogger<MailboxMaintenanceService>.Instance);
         using var cts = new CancellationTokenSource();
 
@@ -33,6 +34,7 @@ public sealed class MailboxMaintenanceServiceTests
         var sut = new MailboxMaintenanceService(
             repository,
             dateTimeProvider,
+            new ServiceInstanceMetadata("MailboxService", "test-instance"),
             NullLogger<MailboxMaintenanceService>.Instance);
 
         try

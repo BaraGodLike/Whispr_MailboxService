@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -8,8 +7,7 @@ public sealed class MailboxService(
     IMailboxRepository repository,
     IRealtimeAuthNonceStore nonceStore,
     IEnumerable<IRealtimeAuthSignatureVerifier> signatureVerifiers,
-    IDateTimeProvider dateTimeProvider,
-    ILogger<MailboxService> logger)
+    IDateTimeProvider dateTimeProvider)
     : IMailboxService
 {
     private const int RealtimeAuthNonceSize = 32;
@@ -20,16 +18,12 @@ public sealed class MailboxService(
     {
         var owner = await repository.GetUserByMailboxAsync(mailboxAddress, ctn);
         if (owner == default)
-        {
-            logger.LogWarning("Owner lookup returned no mailbox owner.");
             return null;
-        }
 
         var today = dateTimeProvider.GetCurrentDate();
         if (MailboxPolicy.IsOwnerMappingActive(today, owner.ExpiresDay))
             return owner;
 
-        logger.LogWarning("Owner mapping is expired.");
         return null;
     }
 
@@ -40,24 +34,29 @@ public sealed class MailboxService(
         if (map != default)
             return map;
 
-        logger.LogWarning("Current mailbox lookup returned no mailbox.");
         return null;
     }
 
-    public Task<bool> RegisterUserAsync(string user, string authAlg, byte[] publicKey, CancellationToken ctn)
+    public async Task<RegisterUserResult> RegisterUserAsync(string user, string authAlg, byte[] publicKey, CancellationToken ctn)
     {
+        var signatureVerifier = signatureVerifiers.FirstOrDefault(v =>
+            string.Equals(v.Algorithm, authAlg, StringComparison.OrdinalIgnoreCase));
+        if (signatureVerifier is null)
+            return new RegisterUserResult(RegisterUserStatus.UnsupportedAlgorithm);
+
+        if (!signatureVerifier.IsValidPublicKey(publicKey))
+            return new RegisterUserResult(RegisterUserStatus.InvalidPublicKey);
+
         var schedule = MailboxPolicy.BuildSchedule(dateTimeProvider.GetCurrentDate());
-        return repository.RegisterUserAsync(user, authAlg, publicKey, schedule, ctn);
+        var created = await repository.RegisterUserAsync(user, authAlg, publicKey, schedule, ctn);
+        return new RegisterUserResult(created ? RegisterUserStatus.Success : RegisterUserStatus.AlreadyExists);
     }
 
     public async Task<RealtimeAuthChallenge?> BeginRealtimeAuthAsync(string user, CancellationToken ctn)
     {
         var authInfo = await repository.GetUserAuthInfoAsync(user, ctn);
         if (authInfo is null)
-        {
-            logger.LogWarning("Realtime auth begin returned no user auth info.");
             return null;
-        }
 
         var nonceBytes = new byte[RealtimeAuthNonceSize];
         RandomNumberGenerator.Fill(nonceBytes);
@@ -79,49 +78,23 @@ public sealed class MailboxService(
     {
         var authInfo = await repository.GetUserAuthInfoAsync(user, ctn);
         if (authInfo is null)
-        {
-            logger.LogWarning("Realtime auth completion returned no user auth info.");
             return new CompleteRealtimeAuthResult(CompleteRealtimeAuthStatus.UserNotFound);
-        }
-
-        if (authInfo.PublicKey.Length != 32)
-        {
-            logger.LogError("Realtime auth public key has invalid length: {Length}.", authInfo.PublicKey.Length);
-            return new CompleteRealtimeAuthResult(CompleteRealtimeAuthStatus.InvalidPublicKey);
-        }
 
         var signatureVerifier = signatureVerifiers.FirstOrDefault(v =>
             string.Equals(v.Algorithm, authInfo.AuthAlg, StringComparison.OrdinalIgnoreCase));
         if (signatureVerifier is null)
-        {
-            logger.LogError("Realtime auth algorithm is not supported: {Algorithm}.", authInfo.AuthAlg);
             return new CompleteRealtimeAuthResult(CompleteRealtimeAuthStatus.UnsupportedAlgorithm);
-        }
+
+        if (!signatureVerifier.IsValidPublicKey(authInfo.PublicKey))
+            return new CompleteRealtimeAuthResult(CompleteRealtimeAuthStatus.InvalidPublicKey);
 
         var payload = BuildRealtimeAuthPayload(user, nonceBytes);
-        bool isSignatureValid;
-        try
-        {
-            isSignatureValid = signatureVerifier.VerifySignature(payload, signature, authInfo.PublicKey);
-        }
-        catch (ArgumentException)
-        {
-            logger.LogError("Realtime auth public key bytes are not valid for algorithm {Algorithm}.", authInfo.AuthAlg);
-            return new CompleteRealtimeAuthResult(CompleteRealtimeAuthStatus.InvalidPublicKey);
-        }
-
-        if (!isSignatureValid)
-        {
-            logger.LogWarning("Realtime auth signature verification failed.");
+        if (!signatureVerifier.VerifySignature(payload, signature, authInfo.PublicKey))
             return new CompleteRealtimeAuthResult(CompleteRealtimeAuthStatus.InvalidSignature);
-        }
 
         var nonceOwner = await nonceStore.ConsumeNonceAsync(nonce, ctn);
         if (!string.Equals(nonceOwner, user, StringComparison.Ordinal))
-        {
-            logger.LogWarning("Realtime auth nonce was missing, already used, or bound to another user.");
             return new CompleteRealtimeAuthResult(CompleteRealtimeAuthStatus.NonceNotFoundOrUsed);
-        }
 
         var (minExpiresDay, maxExpiresDay) = MailboxPolicy.BuildActiveMailboxWindow(dateTimeProvider.GetCurrentDate());
         var mailboxes = await repository.GetActiveMailboxesForUserAsync(user, minExpiresDay, maxExpiresDay, ctn);

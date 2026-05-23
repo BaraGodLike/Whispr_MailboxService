@@ -16,7 +16,7 @@ service MailboxApi {
 }
 
 message GetMailboxRequest {
-  string user = 1;
+  string user_id = 1;
 }
 
 message GetUserRequest {
@@ -24,7 +24,7 @@ message GetUserRequest {
 }
 
 message RegisterUserRequest {
-  string user = 1;
+  string user_id = 1;
   string auth_alg = 2;
   bytes public_key = 3;
 }
@@ -55,5 +55,5 @@ message MailboxResponse {
 }
 
 message GetUserResponse {
-  string user = 1;
+  string user_id = 1;
 }

@@ -6,19 +6,20 @@ Whispr Mailbox Service issues random mailbox identifiers bound to specific users
 
 Core behavior:
 - each user has a current mailbox;
-- a mailbox lives for 6 days;
-- you can create a user mailbox;
-- you can fetch the latest mailbox by user;
-- you can resolve a user by a non-expired mailbox;
-- a separate worker performs daily mailbox rotation.
+- a mailbox stays active for 6 days;
+- a user is registered together with the initial mailbox set;
+- the service can return the current mailbox for a user;
+- the service can resolve a user by a non-expired mailbox;
+- a separate worker performs daily mailbox rotation;
+- realtime auth is completed with a signed nonce challenge.
 
 ## Features
 
-- Create a mailbox for a user.
+- Register a user with `auth_alg` and `public_key`.
 - Get the current mailbox for a user.
-- Get the user by mailbox if that mailbox has not expired yet.
-- Expose a gRPC API.
-- Expose a gRPC health-check service.
+- Get the user by mailbox while that mailbox is still active.
+- Begin and complete realtime auth over gRPC.
+- Expose the standard gRPC health service.
 
 ## Solution structure
 
@@ -31,15 +32,15 @@ Core behavior:
 
 ## Mailbox lifecycle
 
-- When a mailbox is created for a user, it becomes that user's current mailbox.
-- A mailbox stays active for 6 days.
-- The service can return the current mailbox for a user.
-- The service can return the user for a mailbox only while that mailbox is still active.
-- Daily rotation prepares fresh mailbox data and removes stale data.
+- `RegisterUser` creates the user and prepares two mailbox records for that user: the current mailbox and the next mailbox.
+- The current mailbox is the mailbox with `ExpiresDay = today + 6`.
+- A mailbox owner lookup is considered active while `today < expires_day`.
+- `CompleteRealtimeAuth` returns 6 active mailboxes for the user.
+- Daily rotation prepares the next mailbox period and removes stale data.
 
 ## gRPC API
 
-Default local gRPC endpoint in the Docker Compose setup: `https://localhost:8443`
+Default local gRPC endpoint in Docker Compose: `https://localhost:${GRPC_PORT}` with `8443` as the default from `.env`.
 
 Proto file: [Services/mailbox.proto](Services/mailbox.proto)
 
@@ -49,6 +50,7 @@ Service:
 service MailboxApi {
   rpc GetMailbox (GetMailboxRequest) returns (MailboxResponse);
   rpc GetUser (GetUserRequest) returns (GetUserResponse);
+  rpc RegisterUser (RegisterUserRequest) returns (google.protobuf.Empty);
   rpc BeginRealtimeAuth (BeginRealtimeAuthRequest) returns (BeginRealtimeAuthResponse);
   rpc CompleteRealtimeAuth (CompleteRealtimeAuthRequest) returns (CompleteRealtimeAuthResponse);
 }
@@ -56,32 +58,36 @@ service MailboxApi {
 
 ### RegisterUser
 
-Creates a new user, stores the public key metadata, and prepares the first two mailboxes for that user in one operation.
+Creates a user and prepares the initial two mailbox records in one operation.
 
-Request:
+Request example:
 
 ```json
 {
-  "user": "alice",
+  "userId": "alice",
   "authAlg": "Ed25519",
-  "publicKey": "bytes"
+  "publicKey": "MCowBQYDK2VwAyEAJ665pMyVe5AIbj0f0jthwUnEuKPeWcgUI11epFjYwJ0="
 }
 ```
 
 Response:
 - empty payload
 
+Typical errors:
+- `ALREADY_EXISTS` - the user already exists.
+- `INVALID_ARGUMENT` - `userId`, `authAlg`, or `publicKey` is empty.
+
 ### GetMailbox
 
-Request:
+Request example:
 
 ```json
 {
-  "user": "alice"
+  "userId": "alice"
 }
 ```
 
-Response:
+Response example:
 
 ```json
 {
@@ -90,9 +96,13 @@ Response:
 }
 ```
 
+Typical errors:
+- `NOT_FOUND` - the user was not found.
+- `INVALID_ARGUMENT` - `userId` is empty.
+
 ### GetUser
 
-Request:
+Request example:
 
 ```json
 {
@@ -100,23 +110,21 @@ Request:
 }
 ```
 
-Response:
+Response example:
 
 ```json
 {
-  "user": "alice"
+  "userId": "alice"
 }
 ```
 
-Typical gRPC errors:
-- `NOT_FOUND` - user or mailbox was not found.
-- `INVALID_ARGUMENT` - `mailbox` is not a valid GUID, or `user` is empty.
-- `UNAUTHENTICATED` - realtime auth signature verification failed.
-- `FAILED_PRECONDITION` - realtime auth nonce was missing, expired, already used, or the stored public key is invalid.
+Typical errors:
+- `NOT_FOUND` - the mailbox was not found or is no longer active.
+- `INVALID_ARGUMENT` - `mailbox` is not a valid GUID.
 
 ## Realtime auth
 
-`BeginRealtimeAuth` accepts `user_id`, generates a random nonce, stores `rtauth:{nonce} -> user_id` in Redis for 60 seconds, and returns:
+`BeginRealtimeAuth` accepts `userId`, generates a random nonce, stores `rtauth:{nonce} -> user_id` in Redis for 60 seconds, and returns:
 
 ```json
 {
@@ -136,13 +144,50 @@ Typical gRPC errors:
 }
 ```
 
-The signature is verified against the binary payload `"realtime-auth" || user_id || nonce`.
+Notes:
+- the signed binary payload is `"realtime-auth" || user_id || nonce`;
+- the request `alg` must be present;
+- the stored `auth_alg` selects the verifier implementation used by the service;
+- if the nonce is valid it is consumed with Redis `GETDEL`.
 
-On success the response returns the user's 6 active mailboxes.
+Success response:
+
+```json
+{
+  "mailboxes": [
+    {
+      "mailboxAddress": "11111111-2222-3333-4444-555555555555",
+      "refreshAfterUtc": "2026-05-17T00:00:00Z"
+    }
+  ]
+}
+```
+
+Typical errors:
+- `NOT_FOUND` - the user was not found.
+- `INVALID_ARGUMENT` - `userId`, `alg`, or `nonce` is invalid, or `signature` is empty.
+- `UNAUTHENTICATED` - signature verification failed.
+- `FAILED_PRECONDITION` - the nonce is missing, expired, already used, the stored public key is invalid, or the stored auth algorithm is not supported.
 
 ## gRPC health
 
 The service exposes the standard gRPC health service `grpc.health.v1.Health`.
+
+## Storage notes
+
+- Postgres stores users in `Users(user, auth_alg, public_key)`.
+- Redis stores realtime auth challenges as `rtauth:{nonce} -> user_id` with TTL 60 seconds.
+- Mailbox caches are filled lazily on mailbox lookup paths.
+
+## Logging
+
+- `Services` and `Worker` write structured single-line JSON logs to stdout.
+- Loki-friendly structured fields are written directly into log events:
+  - `Service`
+  - `Instance`
+  - `RequestId` for sanitized API error logs
+- Logs do not include user identifiers, mailbox values, nonces, signatures, or public keys.
+- Raw exceptions are not written to logs; only sanitized metadata such as `ExceptionType` is logged.
 
 ## Running with Docker Compose
 
@@ -151,15 +196,13 @@ The Docker Compose setup includes:
 - Redis
 - Redis Insight
 - `Migrator` for database migrations
-- `Services` for the API
+- `Services` for the gRPC API
 
-The current Compose setup does not start `Worker`. The worker is intended to be run separately by an external scheduler.
+The current Compose setup does not start `Worker`. The worker is expected to be run separately by an external scheduler.
 
 ### 1. Prepare `.env`
 
-Copy [.env.example](.env.example) to `.env` and fill in the values.
-
-Required values:
+Copy [.env.example](.env.example) to `.env` and fill the required values:
 - `POSTGRES_DB`
 - `POSTGRES_USER`
 - `POSTGRES_PASSWORD`
@@ -168,6 +211,7 @@ Required values:
 - `REDIS_PORT`
 - `REDIS_INSIGHT_PORT`
 - `HTTPS_CERT_PASSWORD`
+- `GRPC_PORT`
 
 ### 2. Prepare a certificate for gRPC over HTTPS
 
@@ -182,16 +226,16 @@ The password must match `HTTPS_CERT_PASSWORD` in `.env`.
 ### 3. Start the services
 
 ```powershell
-docker-compose up --build
+docker compose up --build
 ```
 
-Default local endpoints after startup:
-- gRPC: `https://localhost:8443`
+Default local endpoint after startup:
+- gRPC: `https://localhost:${GRPC_PORT}` with `8443` as the default
 
 ## Testing gRPC in Postman
 
 1. Create a `gRPC Request`.
-2. Set the server to `https://localhost:8443`.
+2. Set the server to `https://localhost:${GRPC_PORT}`.
 3. Import [Services/mailbox.proto](Services/mailbox.proto).
 4. Choose a `MailboxApi` method.
 5. If you use a self-signed certificate, disable `Enable server certificate verification`.

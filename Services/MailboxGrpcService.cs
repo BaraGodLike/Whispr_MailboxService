@@ -8,8 +8,8 @@ public sealed class MailboxGrpcService(IMailboxService mailboxService) : Mailbox
 {
     public override async Task<MailboxResponse> GetMailbox(GetMailboxRequest request, ServerCallContext context)
     {
-        var user = ValidateUser(request.User);
-        var mailboxMap = await mailboxService.GetCurrentMailboxForUserAsync(user, context.CancellationToken);
+        var userId = ValidateUserId(request.UserId);
+        var mailboxMap = await mailboxService.GetCurrentMailboxForUserAsync(userId, context.CancellationToken);
 
         if (mailboxMap is null)
         {
@@ -34,31 +34,36 @@ public sealed class MailboxGrpcService(IMailboxService mailboxService) : Mailbox
 
         return new GetUserResponse
         {
-            User = mailboxOwner.Value.User
+            UserId = mailboxOwner.Value.User
         };
     }
 
     public override async Task<Empty> RegisterUser(RegisterUserRequest request, ServerCallContext context)
     {
-        var user = ValidateUser(request.User);
+        var userId = ValidateUserId(request.UserId);
         var authAlg = ValidateAuthAlgorithm(request.AuthAlg);
         var publicKey = ValidatePublicKey(request.PublicKey);
 
-        var created = await mailboxService.RegisterUserAsync(user, authAlg, publicKey, context.CancellationToken);
-        if (!created)
+        var result = await mailboxService.RegisterUserAsync(userId, authAlg, publicKey, context.CancellationToken);
+        return result.Status switch
         {
-            throw new RpcException(new Status(StatusCode.AlreadyExists, "User already exists."));
-        }
-
-        return new Empty();
+            RegisterUserStatus.Success => new Empty(),
+            RegisterUserStatus.AlreadyExists => throw new RpcException(new Status(StatusCode.AlreadyExists,
+                "User already exists.")),
+            RegisterUserStatus.UnsupportedAlgorithm => throw new RpcException(new Status(StatusCode.InvalidArgument,
+                "Auth algorithm is not supported.")),
+            RegisterUserStatus.InvalidPublicKey => throw new RpcException(new Status(StatusCode.InvalidArgument,
+                "Public key is invalid for the selected auth algorithm.")),
+            _ => throw new RpcException(new Status(StatusCode.Internal, "Unexpected register user result."))
+        };
     }
 
     public override async Task<BeginRealtimeAuthResponse> BeginRealtimeAuth(
         BeginRealtimeAuthRequest request,
         ServerCallContext context)
     {
-        var user = ValidateUser(request.UserId);
-        var challenge = await mailboxService.BeginRealtimeAuthAsync(user, context.CancellationToken);
+        var userId = ValidateUserId(request.UserId);
+        var challenge = await mailboxService.BeginRealtimeAuthAsync(userId, context.CancellationToken);
         if (challenge is null)
         {
             throw new RpcException(new Status(StatusCode.NotFound, "User not found."));
@@ -75,7 +80,7 @@ public sealed class MailboxGrpcService(IMailboxService mailboxService) : Mailbox
         CompleteRealtimeAuthRequest request,
         ServerCallContext context)
     {
-        var user = ValidateUser(request.UserId);
+        var userId = ValidateUserId(request.UserId);
         ValidateRequestedAlgorithm(request.Alg);
 
         if (request.Signature.IsEmpty)
@@ -85,7 +90,7 @@ public sealed class MailboxGrpcService(IMailboxService mailboxService) : Mailbox
 
         var nonceBytes = DecodeNonce(request.Nonce);
         var result = await mailboxService.CompleteRealtimeAuthAsync(
-            user,
+            userId,
             request.Nonce,
             nonceBytes,
             request.Signature.ToByteArray(),
@@ -106,14 +111,14 @@ public sealed class MailboxGrpcService(IMailboxService mailboxService) : Mailbox
         };
     }
 
-    private static string ValidateUser(string user)
+    private static string ValidateUserId(string userId)
     {
-        if (string.IsNullOrWhiteSpace(user))
+        if (string.IsNullOrWhiteSpace(userId))
         {
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "User is required."));
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "User ID is required."));
         }
 
-        return user;
+        return userId;
     }
 
     private static void ValidateRequestedAlgorithm(string algorithm)
