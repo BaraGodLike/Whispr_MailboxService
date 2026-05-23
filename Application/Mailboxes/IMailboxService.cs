@@ -4,5 +4,12 @@ public interface IMailboxService
 {
     Task<MailboxOwner?> GetUserByMailboxAsync(Guid mailboxAddress, CancellationToken ctn);
     Task<MailboxMap?> GetCurrentMailboxForUserAsync(string user, CancellationToken ctn);
-    Task<MailboxMap> CreateMailboxAsync(string user, CancellationToken ctn);
+    Task<bool> RegisterUserAsync(string user, string authAlg, byte[] publicKey, CancellationToken ctn);
+    Task<RealtimeAuthChallenge?> BeginRealtimeAuthAsync(string user, CancellationToken ctn);
+    Task<CompleteRealtimeAuthResult> CompleteRealtimeAuthAsync(
+        string user,
+        string nonce,
+        byte[] nonceBytes,
+        byte[] signature,
+        CancellationToken ctn);
 }

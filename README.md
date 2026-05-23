@@ -17,12 +17,12 @@ Core behavior:
 - Create a mailbox for a user.
 - Get the current mailbox for a user.
 - Get the user by mailbox if that mailbox has not expired yet.
-- Expose both HTTP and gRPC APIs.
-- Expose a health-check endpoint.
+- Expose a gRPC API.
+- Expose a gRPC health-check service.
 
 ## Solution structure
 
-- `Services` - HTTP API, gRPC API, and health endpoint.
+- `Services` - gRPC API and gRPC health service.
 - `Application` - application logic and business rules.
 - `Infrastructure.Storage` - Postgres and Redis integration.
 - `Migrator` - database migrations.
@@ -37,108 +37,6 @@ Core behavior:
 - The service can return the user for a mailbox only while that mailbox is still active.
 - Daily rotation prepares fresh mailbox data and removes stale data.
 
-## HTTP API
-
-Default local HTTP endpoint in the Docker Compose setup: `http://localhost:8080`
-
-These addresses are local development defaults, not required production addresses.
-
-### Health
-
-```http
-GET /health
-```
-
-Typical response body:
-
-```text
-Healthy
-```
-
-### Create a mailbox for a user
-
-```http
-POST /Mailbox/new
-Content-Type: application/json
-```
-
-Request body:
-
-```json
-"alice"
-```
-
-Response:
-- `201 Created`
-- empty response body
-
-Important:
-- the current REST implementation does not return the created mailbox in the response body;
-- the gRPC `CreateMailbox` method follows the same command-style behavior and also returns no payload.
-
-### Get the current mailbox by user
-
-```http
-POST /Mailbox/mb
-Content-Type: application/json
-```
-
-Request body:
-
-```json
-"alice"
-```
-
-Successful response:
-
-```json
-{
-  "mailboxAddress": "11111111-2222-3333-4444-555555555555",
-  "refreshAfter": "2026-05-17T00:00:00Z"
-}
-```
-
-If the user is not found:
-
-```json
-{
-  "error": "User not found."
-}
-```
-
-### Get the user by mailbox
-
-```http
-POST /Mailbox/user
-Content-Type: application/json
-```
-
-Request body:
-
-```json
-"11111111-2222-3333-4444-555555555555"
-```
-
-Successful response:
-
-```json
-{
-  "user": "alice"
-}
-```
-
-If the mailbox is not found or has expired:
-
-```json
-{
-  "error": "User with this mailbox not found."
-}
-```
-
-Notes:
-- the request body must be a JSON string containing a GUID;
-- with an invalid GUID, ASP.NET Core model binding returns `400 Bad Request`.
-
 ## gRPC API
 
 Default local gRPC endpoint in the Docker Compose setup: `https://localhost:8443`
@@ -151,17 +49,22 @@ Service:
 service MailboxApi {
   rpc GetMailbox (GetMailboxRequest) returns (MailboxResponse);
   rpc GetUser (GetUserRequest) returns (GetUserResponse);
-  rpc CreateMailbox (CreateMailboxRequest) returns (google.protobuf.Empty);
+  rpc BeginRealtimeAuth (BeginRealtimeAuthRequest) returns (BeginRealtimeAuthResponse);
+  rpc CompleteRealtimeAuth (CompleteRealtimeAuthRequest) returns (CompleteRealtimeAuthResponse);
 }
 ```
 
-### CreateMailbox
+### RegisterUser
+
+Creates a new user, stores the public key metadata, and prepares the first two mailboxes for that user in one operation.
 
 Request:
 
 ```json
 {
-  "user": "alice"
+  "user": "alice",
+  "authAlg": "Ed25519",
+  "publicKey": "bytes"
 }
 ```
 
@@ -208,6 +111,38 @@ Response:
 Typical gRPC errors:
 - `NOT_FOUND` - user or mailbox was not found.
 - `INVALID_ARGUMENT` - `mailbox` is not a valid GUID, or `user` is empty.
+- `UNAUTHENTICATED` - realtime auth signature verification failed.
+- `FAILED_PRECONDITION` - realtime auth nonce was missing, expired, already used, or the stored public key is invalid.
+
+## Realtime auth
+
+`BeginRealtimeAuth` accepts `user_id`, generates a random nonce, stores `rtauth:{nonce} -> user_id` in Redis for 60 seconds, and returns:
+
+```json
+{
+  "nonce": "base64-nonce",
+  "expAt": "2026-05-23T12:34:56Z"
+}
+```
+
+`CompleteRealtimeAuth` accepts:
+
+```json
+{
+  "userId": "alice",
+  "nonce": "base64-nonce",
+  "alg": "Ed25519",
+  "signature": "bytes"
+}
+```
+
+The signature is verified against the binary payload `"realtime-auth" || user_id || nonce`.
+
+On success the response returns the user's 6 active mailboxes.
+
+## gRPC health
+
+The service exposes the standard gRPC health service `grpc.health.v1.Health`.
 
 ## Running with Docker Compose
 
@@ -251,8 +186,6 @@ docker-compose up --build
 ```
 
 Default local endpoints after startup:
-- HTTP API: `http://localhost:8080`
-- Health: `http://localhost:8080/health`
 - gRPC: `https://localhost:8443`
 
 ## Testing gRPC in Postman

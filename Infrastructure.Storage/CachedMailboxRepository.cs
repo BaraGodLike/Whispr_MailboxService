@@ -109,55 +109,23 @@ public sealed class CachedMailboxRepository(
         return mailbox;
     }
 
-    public async Task<MailboxMap> CreateMailboxAsync(string user, MailboxSchedule schedule, CancellationToken ctn)
-    {
-        var mailbox = await sqlRepository.CreateMailboxAsync(user, schedule, ctn);
-        var now = dateTimeProvider.GetCurrentDateTime();
+    public Task<bool> RegisterUserAsync(
+        string user,
+        string authAlg,
+        byte[] publicKey,
+        MailboxSchedule schedule,
+        CancellationToken ctn) =>
+        sqlRepository.RegisterUserAsync(user, authAlg, publicKey, schedule, ctn);
 
-        try
-        {
-            await MailboxRedis.SetMailboxAsync(
-                cache,
-                mailbox.Mailbox,
-                user,
-                mailbox.ExpiresDay,
-                now,
-                ctn);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(
-                "Mailbox owner cache write failed. Continuing without cache. ExceptionType: {ExceptionType}.",
-                ex.GetType().FullName);
-        }
+    public Task<UserAuthInfo?> GetUserAuthInfoAsync(string user, CancellationToken ctn) =>
+        sqlRepository.GetUserAuthInfoAsync(user, ctn);
 
-        try
-        {
-            await MailboxRedis.SetUserAsync(
-                cache,
-                mailbox.Mailbox,
-                user,
-                mailbox.ExpiresDay,
-                now,
-                ctn);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(
-                "Current mailbox cache write failed. Continuing without cache. ExceptionType: {ExceptionType}.",
-                ex.GetType().FullName);
-        }
-
-        return mailbox;
-    }
+    public Task<IReadOnlyList<MailboxMap>> GetActiveMailboxesForUserAsync(
+        string user,
+        DateOnly minExpiresDay,
+        DateOnly maxExpiresDay,
+        CancellationToken ctn) =>
+        sqlRepository.GetActiveMailboxesForUserAsync(user, minExpiresDay, maxExpiresDay, ctn);
 
     public Task RotateMailboxesAsync(MailboxSchedule schedule, CancellationToken ctn) =>
         sqlRepository.RotateMailboxesAsync(schedule, ctn);

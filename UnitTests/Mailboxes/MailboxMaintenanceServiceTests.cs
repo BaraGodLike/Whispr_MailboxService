@@ -66,8 +66,18 @@ public sealed class MailboxMaintenanceServiceTests
         public Task<MailboxMap> GetCurrentMailboxForUserAsync(string user, DateOnly expiresDay, CancellationToken ctn) =>
             Task.FromResult(default(MailboxMap));
 
-        public Task<MailboxMap> CreateMailboxAsync(string user, MailboxSchedule schedule, CancellationToken ctn) =>
-            Task.FromResult(default(MailboxMap));
+        public Task<bool> RegisterUserAsync(string user, string authAlg, byte[] publicKey, MailboxSchedule schedule, CancellationToken ctn) =>
+            Task.FromResult(false);
+
+        public Task<UserAuthInfo?> GetUserAuthInfoAsync(string user, CancellationToken ctn) =>
+            Task.FromResult<UserAuthInfo?>(null);
+
+        public Task<IReadOnlyList<MailboxMap>> GetActiveMailboxesForUserAsync(
+            string user,
+            DateOnly minExpiresDay,
+            DateOnly maxExpiresDay,
+            CancellationToken ctn) =>
+            Task.FromResult<IReadOnlyList<MailboxMap>>(Array.Empty<MailboxMap>());
 
         public Task RotateMailboxesAsync(MailboxSchedule schedule, CancellationToken ctn)
         {
