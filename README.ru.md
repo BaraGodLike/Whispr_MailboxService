@@ -40,7 +40,7 @@ Whispr Mailbox Service выдает случайные mailbox-идентифи�
 
 ## gRPC API
 
-Локальный gRPC endpoint по умолчанию в Docker Compose: `https://localhost:${GRPC_PORT}`, где значение по умолчанию в `.env` равно `8443`.
+Локальный gRPC endpoint по умолчанию в Docker Compose: `http://localhost:${GRPC_PORT}`, где значение по умолчанию в `.env` равно `8443`.
 
 Proto-файл: [Services/mailbox.proto](Services/mailbox.proto)
 
@@ -210,35 +210,23 @@ Docker Compose поднимает:
 - `REDIS_PASSWORD`
 - `REDIS_PORT`
 - `REDIS_INSIGHT_PORT`
-- `HTTPS_CERT_PASSWORD`
 - `GRPC_PORT`
 
-### 2. Подготовить сертификат для gRPC over HTTPS
-
-Из корня репозитория:
-
-```powershell
-dotnet dev-certs https -ep .\certs\devcert.pfx -p changeit
-```
-
-Пароль должен совпадать со значением `HTTPS_CERT_PASSWORD` в `.env`.
-
-### 3. Поднять сервисы
+### 2. Поднять сервисы
 
 ```powershell
 docker compose up --build
 ```
 
 Локальный endpoint по умолчанию после запуска:
-- gRPC: `https://localhost:${GRPC_PORT}`, где `8443` используется как значение по умолчанию
+- gRPC: `http://localhost:${GRPC_PORT}`, где `8443` используется как значение по умолчанию
 
 ## Проверка gRPC в Postman
 
 1. Создайте `gRPC Request`.
-2. Укажите сервер `https://localhost:${GRPC_PORT}`.
+2. Укажите сервер `http://localhost:${GRPC_PORT}`.
 3. Импортируйте [Services/mailbox.proto](Services/mailbox.proto).
 4. Выберите нужный метод `MailboxApi`.
-5. Если используется self-signed сертификат, отключите `Enable server certificate verification`.
 
 ## Локальный запуск без Docker
 
