@@ -40,7 +40,7 @@ Core behavior:
 
 ## gRPC API
 
-Default local gRPC endpoint in Docker Compose: `https://localhost:${GRPC_PORT}` with `8443` as the default from `.env`.
+Default local gRPC endpoint in Docker Compose: `http://localhost:${GRPC_PORT}` with `8443` as the default from `.env`.
 
 Proto file: [Services/mailbox.proto](Services/mailbox.proto)
 
@@ -210,35 +210,23 @@ Copy [.env.example](.env.example) to `.env` and fill the required values:
 - `REDIS_PASSWORD`
 - `REDIS_PORT`
 - `REDIS_INSIGHT_PORT`
-- `HTTPS_CERT_PASSWORD`
 - `GRPC_PORT`
 
-### 2. Prepare a certificate for gRPC over HTTPS
-
-From the repository root:
-
-```powershell
-dotnet dev-certs https -ep .\certs\devcert.pfx -p changeit
-```
-
-The password must match `HTTPS_CERT_PASSWORD` in `.env`.
-
-### 3. Start the services
+### 2. Start the services
 
 ```powershell
 docker compose up --build
 ```
 
 Default local endpoint after startup:
-- gRPC: `https://localhost:${GRPC_PORT}` with `8443` as the default
+- gRPC: `http://localhost:${GRPC_PORT}` with `8443` as the default
 
 ## Testing gRPC in Postman
 
 1. Create a `gRPC Request`.
-2. Set the server to `https://localhost:${GRPC_PORT}`.
+2. Set the server to `http://localhost:${GRPC_PORT}`.
 3. Import [Services/mailbox.proto](Services/mailbox.proto).
 4. Choose a `MailboxApi` method.
-5. If you use a self-signed certificate, disable `Enable server certificate verification`.
 
 ## Running locally without Docker
 

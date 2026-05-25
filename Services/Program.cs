@@ -26,7 +26,6 @@ builder.WebHost.ConfigureKestrel(options =>
 {
     options.ListenAnyIP(grpcPort, listenOptions =>
     {
-        listenOptions.UseHttps();
         listenOptions.Protocols = HttpProtocols.Http2;
     });
 });
@@ -67,7 +66,7 @@ startupLogger.LogInformation(
     "gRPC host starting. Service: {Service}, Instance: {Instance}, Endpoint: {Endpoint}.",
     serviceInstanceMetadata.ServiceName,
     serviceInstanceMetadata.InstanceId,
-    $"https://0.0.0.0:{grpcPort}");
+    $"http://0.0.0.0:{grpcPort}");
 
 app.Use(async (context, next) =>
 {
